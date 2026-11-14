@@ -30,7 +30,7 @@ from earshot import config
 from earshot.voice import actions
 from earshot.voice.band_input import SAMPLE_RATE, EchoGate, TranscriptLog
 
-GOOGLE_MODEL = os.environ.get("EARSHOT_VOICE_MODEL", "gemini-4-hydrogen")
+GOOGLE_MODEL = os.environ.get("EARSHOT_VOICE_MODEL", "gemini-3.5-flash-lite")
 OPENAI_MODEL = os.environ.get("EARSHOT_VOICE_OPENAI_MODEL", "")       # empty: Pipecat's default model
 ELEVENLABS_VOICE = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
 KEEP_TURNS = 3            # user turns kept as context; the band hears the room all day

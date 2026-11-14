@@ -12,10 +12,10 @@ DATA = ROOT / "data"                      # git-ignored: clips, photos, calibrat
 TASKS_DIR = DATA / "tasks"
 CALIB_FILE = DATA / "camera_to_arm.json"
 
-# Models (Gemini API). Gemini 4 does the watching, pointing and checking.
-WATCH_MODEL = "gemini-4-argon"        # clip + words -> steps; right on both test clips, about 27 s
-POINT_MODEL = "gemini-4-hydrogen"     # finds items in a photo; about 3.5 s
-POINT_MODEL_ALT = "gemini-4-argon"    # slower (about 5 s) but puts the point on the item's base
+# Models (Gemini API), chosen per job from timed runs on the same clips and photo.
+WATCH_MODEL = "gemini-4-argon"        # clip + words -> steps, and applying rules: right on both clips, about 27 s
+POINT_MODEL = "gemini-3.8-flash"      # finds items and checks placements: fastest (about 2.5 s), points at the base
+POINT_MODEL_ALT = "gemini-4-argon"    # about 5 s, also points at the base
 GEMINI_BASE = "https://generativelanguage.googleapis.com"
 
 # Camera
