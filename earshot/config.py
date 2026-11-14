@@ -29,11 +29,10 @@ URDF_PATH = str(Path.home() / "developer/SO-ARM100/Simulation/SO101/so101_new_ca
 EE_FRAME = "gripper_frame_link"
 ARM_CALIBRATION = Path.home() / ".cache/huggingface/lerobot/calibration/robots/so_follower" / f"{ARM_ID}.json"
 # Extra degrees between this arm's motor zero and the URDF's, beyond what the calibration file
-# explains. The wrist roll was calibrated a quarter turn from the URDF's zero. Worked out from
-# stage pictures of two picks on 2026-11-14: with no correction the gap opened to the arm's
-# right when told to open away from the camera; with +90 it opened toward the camera; so the
-# motor reads 90 degrees more than the URDF's angle.
-ARM_ZERO_FIX = {"wrist_roll": -90.0}
+# explains. None is needed. Measured on 2026-11-14 with scripts/arm_roll_test.py: with the wrist
+# motor at -90, 0 and +90 the swinging jaw pointed right, away from the base and left, which is
+# what the URDF predicts. (Two earlier guesses of +90 and -90 here were wrong.)
+ARM_ZERO_FIX: dict[str, float] = {}
 ARM_JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 
 # Heights above the table, in metres, in the arm's base frame (z of the table found at calibration).
