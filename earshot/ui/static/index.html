@@ -4,63 +4,129 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Earshot</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=3">
 </head>
-<body data-mode="idle">
+<body data-mode="idle" data-task="no">
 
-<header>
-  <div class="brand">EARSHOT</div>
-  <div class="taskname" id="taskname">No task yet</div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="g-eye" viewBox="0 0 24 24">
+      <path d="M2 12c2.6-4.4 6-6.6 10-6.6s7.4 2.2 10 6.600c-2.6 4.4-6 6.6-10 6.600S4.6 16.4 2 12z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="3.3" fill="currentColor"/>
+    </symbol>
+    <symbol id="g-ear" viewBox="0 0 24 24">
+      <path d="M6.5 9.500a6 6 0 1 1 12 0c0 3.6-3.3 4.3-3.9 7.2-.4 2.1-1.7 3.8-3.9 3.8-1.9 0-3.3-1.3-3.6-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9.6 10a3 3 0 0 1 5.8-.8c.3 1.5-1.2 2-2.2 3.1" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="g-arm" viewBox="0 0 24 24">
+      <path d="M3.5 21h10M8.5 21v-5.500L13 7l6 3.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M19 10.500l2.8-.9M19 10.500l1.2 2.7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="8.5" cy="15.5" r="2" fill="currentColor"/><circle cx="13" cy="7" r="2" fill="currentColor"/>
+    </symbol>
+    <symbol id="g-to" viewBox="0 0 28 24">
+      <path d="M2 12h21M15.5 5l7.5 7-7.5 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="g-cross" viewBox="0 0 24 24">
+      <path d="M5.5 5.500l13 13M18.5 5.500l-13 13" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="g-warn" viewBox="0 0 24 24">
+      <path d="M12 3.500L22 20.500H2z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+      <path d="M12 10v5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="17.7" r="1.3" fill="currentColor"/>
+    </symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="brand">Earshot</div>
+  <div class="taskname" id="taskname"><span class="quiet">No task yet</span></div>
+  <div class="conn" id="conn" role="status" hidden>Reconnecting</div>
   <ol class="stages" id="stages" aria-label="Where we are in the loop">
-    <li data-stage="teaching"><b>1</b> You show it once</li>
-    <li data-stage="understanding"><b>2</b> I work out the steps</li>
-    <li data-stage="helping"><b>3</b> I help you</li>
-    <li data-stage="doing"><b>4</b> I do it myself</li>
+    <li data-stage="teaching"><b>1</b><span>You show it once</span></li>
+    <li data-stage="understanding"><b>2</b><span>I work out the steps</span></li>
+    <li data-stage="helping"><b>3</b><span>I help you</span></li>
+    <li data-stage="doing"><b>4</b><span>I do it myself</span></li>
   </ol>
-  <div class="conn" id="conn">CONNECTING</div>
 </header>
 
 <main>
-  <section class="col left">
-    <div class="banner" id="banner">
-      <div class="banner-mode" id="mode-label">READY</div>
-      <div class="banner-sub" id="mode-sub">Waiting for a task</div>
+  <section class="bench-col" aria-label="Live bench">
+    <div class="bench">
+      <div class="band">
+        <span class="band-mode" id="mode-label">Ready</span>
+        <span class="band-sub" id="mode-sub">Waiting for a task</span>
+      </div>
+      <div class="view"><img id="frame" alt="Live camera view of the table"></div>
     </div>
-    <div class="camera"><img id="frame" alt="Live camera view of the table"></div>
-    <div class="robot"><span class="label">ARM</span><span id="robot-status" class="robot-text">&nbsp;</span></div>
-    <div class="buttons" id="buttons">
-      <button data-action="start_teaching">Start teaching</button>
-      <button data-action="stop_teaching">Stop teaching</button>
-      <button data-action="help_me">Help me</button>
-      <button data-action="your_turn">Your turn</button>
-      <button data-action="pause">Pause</button>
-      <button data-action="resume">Resume</button>
-      <form id="load-form" class="load">
-        <input id="load-query" type="text" placeholder="the sorting one / at 10 / the last one" aria-label="Which saved task">
-        <button type="submit">Load task</button>
-      </form>
+
+    <p class="arm">
+      <svg class="glyph" aria-hidden="true"><use href="#g-arm"/></svg>
+      <span class="sr">The arm: </span><span id="robot-status"></span>
+    </p>
+
+    <p class="hearing quiet" id="hearing">
+      <svg class="glyph" aria-hidden="true"><use href="#g-ear"/></svg>
+      <span class="hearing-k">Heard just now</span>
+      <span class="hearing-text" id="transcript">Nothing yet</span>
+    </p>
+
+    <div class="controls" id="controls">
+      <div class="main-buttons" id="main-buttons">
+        <button type="button" data-action="start_teaching">Start teaching</button>
+        <button type="button" data-action="stop_teaching">Stop teaching</button>
+        <button type="button" data-action="help_me">Help me</button>
+        <button type="button" data-action="your_turn">Your turn</button>
+        <button type="button" data-action="pause">Pause</button>
+        <button type="button" data-action="resume">Resume</button>
+        <span class="no-main" id="no-main" hidden>Nothing to press while I work out the steps</span>
+      </div>
+      <div class="other-buttons" id="other-buttons">
+        <button type="button" data-action="start_teaching">Start teaching</button>
+        <button type="button" data-action="stop_teaching">Stop teaching</button>
+        <button type="button" data-action="help_me">Help me</button>
+        <button type="button" data-action="your_turn">Your turn</button>
+        <button type="button" data-action="pause">Pause</button>
+        <button type="button" data-action="resume">Resume</button>
+        <form id="load-form" class="load">
+          <input id="load-query" type="text" placeholder="the last one" aria-label="Which saved task to load">
+          <button type="submit">Load task</button>
+        </form>
+      </div>
     </div>
   </section>
 
-  <section class="col centre">
-    <div class="rules" id="rules" hidden></div>
-    <h2 class="label" id="steps-label">STEPS</h2>
-    <ol class="steps" id="steps"></ol>
-    <div class="corrections" id="corrections" hidden>
-      <h2 class="label">YOUR CORRECTIONS</h2>
-      <ul id="corrections-list"></ul>
-    </div>
-  </section>
+  <section class="sheet-col">
+    <article class="sheet" id="sheet" aria-label="Instruction sheet">
+      <header class="sheet-head">
+        <h1 id="sheet-title">Instruction sheet</h1>
+        <span class="progress" id="progress"></span>
+      </header>
 
-  <section class="col right">
-    <h2 class="label">HEARING NOW</h2>
-    <div class="transcript" id="transcript"></div>
-    <div class="counters" id="counters">0 of 0 picks, 0 retried</div>
-    <h2 class="label">WHAT JUST HAPPENED <span class="hint">newest first</span></h2>
-    <ul class="log" id="log"></ul>
+      <div class="rules" id="rules" hidden></div>
+
+      <div class="steps-wrap" id="steps-wrap" hidden>
+        <div class="tape" id="tape" hidden></div>
+        <ol class="steps" id="steps"></ol>
+      </div>
+
+      <div class="invite" id="invite">
+        <p class="invite-big" id="invite-big">Say “watch me”, then do the task once.</p>
+        <p class="invite-small" id="invite-small">Talk while you do it. The steps will be written here, each with what the camera saw and what you said.</p>
+        <div class="working" id="working" hidden><i></i></div>
+      </div>
+
+      <div class="corrections" id="corrections" hidden>
+        <h2>Corrections</h2>
+        <ul id="corrections-list"></ul>
+      </div>
+    </article>
+
+    <div class="after">
+      <p class="score" id="score"></p>
+      <ul class="events" id="events" aria-label="Recent events, newest first"></ul>
+    </div>
   </section>
 </main>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=3"></script>
 </body>
 </html>
