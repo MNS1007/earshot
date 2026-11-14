@@ -23,8 +23,8 @@ ABOVE_TABLE_GRASP = 0.006     # height for setting an item back down on the tabl
 ABOVE_TABLE_HOVER = 0.06
 ABOVE_TABLE_DROP = 0.14    # over a tall container; the gripper leans at this height
 ABOVE_TABLE_LOW_DROP = 0.08  # over a bowl or a box
-CLEARANCE = 0.014            # spare room each side of an item between the open fingers (about the pointing error)
-ITEM_WIDTH_GUESS = 0.035     # used only when an item's width could not be measured from its outline
+RAKE_LEAD = 0.02             # the fixed jaw lands this far in front of the item's near side (twice the pointing error)
+RAKE_GAP = 0.085             # fingertip gap while coming down: about the widest at which the swinging jaw still reaches the table
 MAX_PLACE_REACH = 0.30       # metres from the base; a destination further out is approached as far as this
 
 
@@ -224,47 +224,37 @@ class Arm:
     def pick_place(self, pick_px, place_px, drop: bool, tall: bool = False, long_side_px=None, outline_px=None) -> bool:
         """Pick the item at `pick_px` and put it at `place_px` (camera pixels).
 
-        drop=True releases from above (into a container; `tall` for a cup); drop=False sets it
-        down on the table. `long_side_px` is the two ends of the item's long side as the camera
-        sees them; with it the wrist turns so the jaws close across the narrow side.
-        Returns False, without going to the destination, when the gripper closed on nothing. Returns True when the motion finished. Whether the item actually
-        arrived is for the camera to check afterwards.
+        `pick_px` should be where the item's near side meets the table, which is what the
+        pointing model gives. drop=True releases from above (into a container; `tall` for a
+        cup); drop=False sets it down on the table. `long_side_px` and `outline_px` are accepted
+        for callers that measure them but are not needed by the rake grasp used here.
+        Returns False, without going to the destination, when the gripper closed on nothing,
+        and True when the motion finished. Whether the item actually arrived is for the camera
+        to check afterwards.
         """
         px, py = self.table.to_arm(*pick_px)
         qx, qy = self.table.to_arm(*place_px)
-        seen_direction, width = None, ITEM_WIDTH_GUESS
-        base = self.footprint(outline_px) if outline_px is not None else None
-        if base and np.hypot(base[0] - px, base[1] - py) < 0.04:
-            # The measured middle of the base beats the model's point. If the two disagree by more
-            # than an item's width, the outline was probably cut by something in front: keep the model's.
-            px, py, seen_direction, width = base
         far = float(np.hypot(qx, qy))
         if far > MAX_PLACE_REACH:                # e.g. a container whose near edge is in reach but whose middle is not
             qx, qy = qx * MAX_PLACE_REACH / far, qy * MAX_PLACE_REACH / far
-        if seen_direction is not None:            # jaws square to the measured long side
-            radial = float(np.rad2deg(np.arctan2(py, px)))
-            self.jaw_deg = radial + ((seen_direction + 90.0 - radial + 90.0) % 180.0 - 90.0)
-        else:
-            self.jaw_deg = self.jaw_across(pick_px, *long_side_px) if long_side_px else None
-        # The fixed jaw carries the point the arm steers; the other jaw opens to one side of it.
-        # Open just wider than the item, and steer the fixed jaw to half that gap short of the
-        # item's middle, so the item sits in the centre of the gap when the fingers come down.
-        gap = min(width, 0.07) + 2 * CLEARANCE
-        jaw_line = self.jaw_deg if self.jaw_deg is not None else float(np.rad2deg(np.arctan2(py, px)))
-        # The gap can be on either side of the fixed jaw: take the side that needs less wrist roll.
-        table_z = self.table.table_z
-        rolls = []
-        for line in (jaw_line, jaw_line + 180.0):
-            q, err, _, ok = kin.ik_down(px, py, table_z + ABOVE_TABLE_APPROACH, jaw_deg=line)
-            rolls.append(abs(q[4]) if ok and err < 0.008 else 1e9)
-        if rolls[1] < rolls[0]:
-            jaw_line += 180.0
-        self.jaw_deg = jaw_line
-        toward_moving_jaw = np.array([np.cos(np.deg2rad(jaw_line)), np.sin(np.deg2rad(jaw_line))])
-        px, py = np.array([px, py]) - toward_moving_jaw * gap / 2.0
-        closed = max(0.0, kin.gripper_for_gap(max(width - 0.012, 0.004)) * (1.0 - 0.5 * self.grip))
+
+        # Rake grasp. What the camera reports reliably is the point where the item's near side
+        # meets the table; how deep the item is behind that point it cannot see. So the fixed
+        # jaw comes down in the clear space just in front of that point, the gripper is opened
+        # wide with the gap reaching away from the camera, and the closing jaw sweeps the item
+        # up against the fixed one. No width, height or orientation has to be known.
+        away = np.array(self.table.to_arm(pick_px[0], pick_px[1] - 12.0)) - np.array([px, py])
+        away = away / np.linalg.norm(away)        # along the table, from the camera toward the item
+        line = float(np.rad2deg(np.arctan2(away[1], away[0])))
+        _, err, _, ok = kin.ik_down(px, py, self.table.table_z + ABOVE_TABLE_APPROACH, jaw_deg=line)
+        if not ok or err > 0.008:                 # the wrist cannot turn that far here: rake outward from the base
+            line = float(np.rad2deg(np.arctan2(py, px)))
+            away = np.array([np.cos(np.deg2rad(line)), np.sin(np.deg2rad(line))])
+        self.jaw_deg = line
+        px, py = np.array([px, py]) - away * RAKE_LEAD
+        closed = 3.0 * (1.0 - self.grip)
         self._closed = closed
-        self.set_gripper(kin.gripper_for_gap(gap), wait=0.2)
+        self.set_gripper(kin.gripper_for_gap(RAKE_GAP), wait=0.2)
         self.move_xyz(px, py, ABOVE_TABLE_HOVER)
         self.move_height(ABOVE_TABLE_APPROACH)
         self.lower_until_touch()                 # fingertips on the table, so the item is gripped low
@@ -289,7 +279,7 @@ class Arm:
 
     def holding_something(self) -> bool:
         """After closing: a gripper that stopped short of its target is holding an item."""
-        return arm.read_gripper(self.robot) > self._closed + 3.0
+        return arm.read_gripper(self.robot) > self._closed + 5.0
 
     def back_off(self) -> None:
         """After a stop: let go of anything held, lift clear, and return to rest."""

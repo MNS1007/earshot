@@ -50,11 +50,6 @@ try:
     qx, qy = bot.table.to_arm(*place_px)
     print(f'"{args.item}" at pixel ({pick_px[0]:.0f}, {pick_px[1]:.0f}) = {px * 100:.1f} cm out, {py * 100:.1f} cm across')
     print(f'going to {args.to or "the handover spot"} at {qx * 100:.1f} cm out, {qy * 100:.1f} cm across')
-    if long_side:
-        jaw = bot.jaw_across(pick_px, *long_side)
-        print(f"it lies lengthwise, so the jaws will close across it (jaw line at {jaw:.0f} degrees in the arm's frame)")
-    else:
-        print("no clear long side: the jaws close toward the base")
     print(f"picture with both points: {config.DATA / 'last_pick.jpg'}")
     input("Press Enter to move, Ctrl+C to cancel...")
     held = bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall, long_side_px=long_side,
