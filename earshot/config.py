@@ -1,0 +1,51 @@
+"""Central settings: model names, paths, ports, and table geometry.
+
+Everything that might change at the venue lives here so no other file hard-codes it.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DATA = ROOT / "data"                      # git-ignored: clips, photos, calibration, saved tasks
+TASKS_DIR = DATA / "tasks"
+CALIB_FILE = DATA / "camera_to_arm.json"
+
+# Models (Gemini API). One fast model does both watching and pointing; ER is the alternate.
+WATCH_MODEL = "gemini-3.8-flash"
+POINT_MODEL = "gemini-3.8-flash"
+POINT_MODEL_ALT = "gemini-robotics-er-2-preview"
+GEMINI_BASE = "https://generativelanguage.googleapis.com"
+
+# Camera
+CAMERA_NAME = "HD Pro Webcam C920"
+CAMERA_SIZE = (1280, 720)
+
+# Arm
+ARM_PORT = "/dev/tty.usbmodem5B790502351"
+ARM_ID = "follower"
+URDF_PATH = str(Path.home() / "developer/SO-ARM100/Simulation/SO101/so101_new_calib.urdf")
+EE_FRAME = "gripper_frame_link"
+ARM_JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
+
+# Heights above the table, in metres, in the arm's base frame (z of the table found at calibration).
+HOVER_Z = 0.10        # travel height
+GRASP_Z = 0.015       # fingertip height when closing on an item lying flat
+DROP_Z = 0.09         # release height over a container
+
+# Local services
+UI_PORT = 8765        # screen + state API
+VOICE_POST_URL = f"http://127.0.0.1:{UI_PORT}/api/voice"   # the voice process posts actions here
+
+
+def key(name: str) -> str:
+    """Read an API key from the environment or the git-ignored .env file."""
+    if name in os.environ:
+        return os.environ[name]
+    env = ROOT / ".env"
+    if env.exists():
+        for line in env.read_text().splitlines():
+            if line.strip().startswith(name + "="):
+                return line.split("=", 1)[1].strip().strip("'\"")
+    raise RuntimeError(f"{name} is not set. Put it in {env} (never commit that file).")
