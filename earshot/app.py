@@ -262,9 +262,9 @@ class Earshot:
                         else step.destination)
         if px is not None and self.table is not None:
             x, y = self.table.to_arm(*px)
-            if (x * x + y * y) ** 0.5 > 0.36:
+            if (x * x + y * y) ** 0.5 > 0.42:
                 state.check(f"The {step.destination} is about {(x * x + y * y) ** 0.5 * 100:.0f} cm from my base. "
-                            "I reach about 30 cm; move it closer.")
+                            "I reach about 40 cm; move it closer.")
         return px
 
     def do_alone(self) -> None:

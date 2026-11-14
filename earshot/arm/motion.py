@@ -38,7 +38,7 @@ EMPTY_GRIPPER_READS = 2.0    # what the gripper position reads when it has close
 RAKE_STEP_BACK = 0.015       # how far to step back when the fixed jaw comes down on top of the item
 ON_TABLE = 0.014             # a fingertip measured lower than this is on the table, not on an item
 RAKE_GAP = 0.085             # fingertip gap while coming down: about the widest at which the swinging jaw still reaches the table
-MAX_PLACE_REACH = 0.30       # metres from the base; a destination further out is approached as far as this
+MAX_PLACE_REACH = 0.40       # metres from the base: the arm stretched out, gripper leaning, still holds a release height here
 
 
 class Arm:
