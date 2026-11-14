@@ -24,6 +24,8 @@ ABOVE_TABLE_HOVER = 0.06
 ABOVE_TABLE_DROP = 0.14    # over a tall container; the gripper leans at this height
 ABOVE_TABLE_LOW_DROP = 0.08  # over a bowl or a box
 RAKE_LEAD = 0.02             # the fixed jaw lands this far in front of the item's near side (twice the pointing error)
+RAKE_STEP_BACK = 0.015       # how far to step back when the fixed jaw comes down on top of the item
+ON_TABLE = 0.014             # a fingertip measured lower than this is on the table, not on an item
 RAKE_GAP = 0.085             # fingertip gap while coming down: about the widest at which the swinging jaw still reaches the table
 MAX_PLACE_REACH = 0.30       # metres from the base; a destination further out is approached as far as this
 
@@ -130,14 +132,26 @@ class Arm:
             return self.last_lean
 
     def move_height(self, above_table: float) -> float:
-        """Straight up or down over the current spot, in 1 cm slices so the tip does not swing sideways."""
+        """Straight up or down over the current spot, in 1 cm slices so the tip does not swing sideways.
+
+        If the arm cannot reach the full height here it stops at the last slice it could.
+        """
         x, y, h0 = self._at
         q = arm.read_joints(self.robot)
+        reached = h0
         for h in np.linspace(h0, above_table, max(2, int(abs(above_table - h0) / 0.01) + 1))[1:]:
-            q = self._solve(x, y, float(h), seed=q)
+            try:
+                q = self._solve(x, y, float(h), seed=q)
+            except ReachError:
+                break
             self.move_joints(q)
-        self._at = (x, y, above_table)
+            reached = float(h)
+        self._at = (x, y, reached)
         return self.last_lean
+
+    def tip_height(self) -> float:
+        """Where the fingertip really is above the table, from the joints as measured (not as commanded)."""
+        return float(kin.fk(arm.read_joints(self.robot))[2, 3] - self.table.table_z)
 
     def follow_camera(self, frame) -> str:
         """Re-find the calibration marks in `frame` and correct for a nudged camera. Returns a short report."""
@@ -258,12 +272,22 @@ class Arm:
         self.set_gripper(kin.gripper_for_gap(RAKE_GAP), wait=0.2)
         self.move_xyz(px, py, ABOVE_TABLE_HOVER)
         self._stage("1 above")
-        self.move_height(ABOVE_TABLE_APPROACH)
-        self._stage("2 low")
-        reached = self.lower_until_touch()       # fingertips on the table, so the item is gripped low
-        self._stage(f"3 touch at {reached * 1000:.0f} mm, lean {self.last_lean:.0f} deg, joints {np.round(arm.read_joints(self.robot))}")
+        for attempt in range(3):
+            self.move_height(ABOVE_TABLE_APPROACH)
+            self.lower_until_touch()
+            height = self.tip_height()
+            self._stage(f"3 down try {attempt + 1}, tip measured {height * 1000:.0f} mm above the table, "
+                        f"lean {self.last_lean:.0f} deg")
+            if height < ON_TABLE:
+                break
+            # The fingertip stopped well above the table: it is resting on the item, not beside
+            # it. Lift, step back toward the camera, and come down again.
+            self.move_height(ABOVE_TABLE_HOVER)
+            px, py = np.array([px, py]) - away * RAKE_STEP_BACK
+            self.move_xyz(px, py, ABOVE_TABLE_HOVER)
         self.set_gripper(closed)
         self._stage(f"4 closed, gripper reads {arm.read_gripper(self.robot):.0f}")
+        self.jaw_deg = None                      # lifting does not need the wrist held at an angle
         self.move_height(ABOVE_TABLE_HOVER)
         self._stage(f"5 lifted, gripper reads {arm.read_gripper(self.robot):.0f}")
         if not self.holding_something():         # the fingers met: nothing is between them

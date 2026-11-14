@@ -115,6 +115,20 @@ def point_at(image: np.ndarray | str | Path, descriptions: list[str],
     return [found[i] for i in sorted(found)]
 
 
+def near_edge(image_bgr: np.ndarray, x: float, y: float) -> tuple[float, float]:
+    """Slide a point on a coloured item straight down to where the item meets the table.
+
+    The pointing model often lands part-way up an item's front face. The arm needs the spot on
+    the table, so this follows the item's colour down the same image column to its lowest
+    pixel. Items with no clear colour keep the model's point.
+    """
+    outline = contact_outline(image_bgr, x, y)
+    if outline is None:
+        return x, y
+    column = outline[np.abs(outline[:, 0] - x) <= 4]
+    return (x, float(np.median(column[:, 1]))) if len(column) else (x, y)
+
+
 AXIS_SCHEMA = {
     "type": "object",
     "properties": {

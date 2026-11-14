@@ -31,10 +31,13 @@ bot.grip = args.grip
 try:
     frame = cam.fresh_frame()
     print(bot.follow_camera(frame))
-    grasp = point.grasp_of(frame, args.item)
-    if grasp is None:
+    hits = point.point_at(frame, [args.item])
+    if not hits:
         raise SystemExit(f'The camera cannot see "{args.item}".')
-    pick_px, long_side = (grasp["x"], grasp["y"]), grasp["long_side"]
+    pick_px = point.near_edge(frame, hits[0]["x"], hits[0]["y"])
+    long_side = None
+    print(f"model pointed at ({hits[0]['x']:.0f}, {hits[0]['y']:.0f}); its near edge on the table is at "
+          f"({pick_px[0]:.0f}, {pick_px[1]:.0f})")
     if args.to:
         hits = point.point_at(frame, [f"the middle of the opening of the {args.to}"])
         if not hits:
@@ -64,7 +67,7 @@ try:
     bot.on_stage = record
     input("Press Enter to move, Ctrl+C to cancel...")
     held = bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall, long_side_px=long_side,
-                          outline_px=grasp.get("outline"))
+                          outline_px=None)
     print("gripper felt the item: carried it" if held else "gripper closed on nothing: missed")
     if args.check:
         r = point.check_placed(cam.fresh_frame(), args.item, args.to or "the table near the front edge")

@@ -183,10 +183,8 @@ class Earshot:
         hits = point.point_at(frame, [what])
         if not hits:
             return None
-        outline = point.contact_outline(frame, hits[0]["x"], hits[0]["y"])
-        if outline is not None:
-            return {"x": hits[0]["x"], "y": hits[0]["y"], "long_side": None, "outline": outline}
-        return point.grasp_of(frame, what)
+        x, y = point.near_edge(frame, hits[0]["x"], hits[0]["y"])
+        return {"x": x, "y": y, "long_side": None, "outline": None}
 
     def _find(self, what: str) -> Optional[tuple[float, float]]:
         hits = point.point_at(self.cam.fresh_frame(), [what])
