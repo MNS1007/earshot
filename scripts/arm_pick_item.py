@@ -41,9 +41,9 @@ try:
     print(f"model pointed at ({hits[0]['x']:.0f}, {hits[0]['y']:.0f}); its near edge on the table is at "
           f"({pick_px[0]:.0f}, {pick_px[1]:.0f})")
     if args.to:
-        # Aim at where the container stands on the table: a point up on its rim would be
-        # mapped to a spot far behind it by the tilted camera.
-        hits = point.point_at(frame, [args.to])
+        # Aim at the floor inside the container. The floor is at table level, so the tilted camera
+        # maps it correctly; a point on the rim or the outside wall would not be.
+        hits = point.point_at(frame, [f"the middle of the bottom inside the {args.to}"])
         if not hits:
             raise SystemExit(f'The camera cannot see "{args.to}".')
         place_px = (hits[0]["x"], hits[0]["y"])

@@ -256,9 +256,10 @@ class Earshot:
         if step.dest_kind == "place" and step.place_xy:
             h, w = frame.shape[:2]
             return step.place_xy[0] * w / 1000.0, step.place_xy[1] * h / 1000.0
-        # The point model aims at where a thing rests on the table. That is what the calibration
-        # needs: a point up on a cup's rim would be mapped to a spot far behind the cup.
-        px = self._find(step.destination)
+        # For a container, aim at the floor inside it: the floor is at table level, so the tilted
+        # camera maps it correctly, which a point on the rim or the outside wall would not be.
+        px = self._find(f"the middle of the bottom inside the {step.destination}" if step.dest_kind == "container"
+                        else step.destination)
         if px is not None and self.table is not None:
             x, y = self.table.to_arm(*px)
             if (x * x + y * y) ** 0.5 > 0.36:
