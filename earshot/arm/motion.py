@@ -21,6 +21,7 @@ ABOVE_TABLE_GRASP = 0.012  # fingertip height above the table when closing, metr
 ABOVE_TABLE_HOVER = 0.06
 ABOVE_TABLE_DROP = 0.14    # over a tall container; the gripper leans at this height
 ABOVE_TABLE_LOW_DROP = 0.08  # over a bowl or a box
+MAX_PLACE_REACH = 0.30       # metres from the base; a destination further out is approached as far as this
 
 
 class Arm:
@@ -54,26 +55,43 @@ class Arm:
             s = 0.5 - 0.5 * np.cos(np.pi * i / n)           # ease in and out
             self._send(start + s * (target - start), grip)
             time.sleep(1.0 / RATE_HZ)
-        self._settle(target)
+        self._settle(target, grip)
 
-    def _settle(self, target: np.ndarray, tol_deg: float = 2.0, timeout: float = 1.5) -> None:
+    def _settle(self, target: np.ndarray, grip: float, tol_deg: float = 1.5, timeout: float = 4.0) -> None:
+        """Keep asking for `target` until the arm is really there (commands are cut short when it lags)."""
         t0 = time.time()
         while time.time() - t0 < timeout:
             if np.max(np.abs(arm.read_joints(self.robot) - target)) < tol_deg:
                 return
-            time.sleep(0.03)
-
-    def set_gripper(self, value: float, wait: float = 0.6) -> None:
-        q = arm.read_joints(self.robot)
-        n = 10
-        for i in range(1, n + 1):
-            self._send(q, self._grip_now + (value - self._grip_now) * i / n)
+            self._send(target, grip)
             time.sleep(1.0 / RATE_HZ)
+
+    def set_gripper(self, value: float, wait: float = 0.3) -> None:
+        """Open or close to `value`, stopping early when the fingers stall on an item."""
+        q = arm.read_joints(self.robot)
+        last, still, t0 = arm.read_gripper(self.robot), 0, time.time()
+        while time.time() - t0 < 2.5:
+            self._send(q, value)
+            time.sleep(1.0 / RATE_HZ)
+            now = arm.read_gripper(self.robot)
+            if abs(now - value) < 2.0:
+                break
+            still = still + 1 if abs(now - last) < 0.4 else 0
+            if still >= 8:                      # about a quarter of a second without moving: it is gripping
+                break
+            last = now
         self._grip_now = value
         time.sleep(wait)
 
     def _solve(self, x: float, y: float, above_table: float, seed=None) -> np.ndarray:
-        q, err, lean, ok = kin.ik_down(x, y, self.table.table_z + above_table, seed_deg=seed, jaw_deg=self.jaw_deg)
+        z = self.table.table_z + above_table
+        q, err, lean, ok = kin.ik_down(x, y, z, seed_deg=seed, jaw_deg=self.jaw_deg)
+        if self.jaw_deg is not None and seed is None:
+            # The jaws look the same turned half way round: take whichever needs less wrist roll.
+            q2, err2, lean2, ok2 = kin.ik_down(x, y, z, jaw_deg=self.jaw_deg + 180.0)
+            if ok2 and err2 <= 0.008 and (abs(q2[4]) < abs(q[4]) or not ok or err > 0.008):
+                q, err, lean, ok = q2, err2, lean2, ok2
+                self.jaw_deg += 180.0
         if not ok or err > 0.008:
             raise ReachError(f"Cannot reach x {x * 100:.0f} cm, y {y * 100:.0f} cm at {above_table * 100:.0f} cm "
                              f"above the table (off by {err * 1000:.0f} mm).")
@@ -144,6 +162,9 @@ class Arm:
         """
         px, py = self.table.to_arm(*pick_px)
         qx, qy = self.table.to_arm(*place_px)
+        far = float(np.hypot(qx, qy))
+        if far > MAX_PLACE_REACH:                # e.g. a container whose near edge is in reach but whose middle is not
+            qx, qy = qx * MAX_PLACE_REACH / far, qy * MAX_PLACE_REACH / far
         self.jaw_deg = self.jaw_across(pick_px, *long_side_px) if long_side_px else None
         closed = max(0.0, 22.0 - 22.0 * self.grip)
         self.set_gripper(GRIP_OPEN, wait=0.2)

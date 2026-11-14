@@ -20,8 +20,13 @@ GRIPPER = "gripper"
 def _make(max_step_deg: float):
     from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 
-    return SO101Follower(SO101FollowerConfig(port=config.ARM_PORT, id=config.ARM_ID,
-                                             max_relative_target=max_step_deg))
+    # LeRobot cuts any command that asks a joint to be further than this from where it is now.
+    # The wrist roll and the gripper are light and travel far, so they get more room; without
+    # it the gripper stopped half closed and the wrist arrived late.
+    limit = {j: max_step_deg for j in config.ARM_JOINTS}
+    limit["wrist_roll"] = 4 * max_step_deg
+    limit[GRIPPER] = 100.0
+    return SO101Follower(SO101FollowerConfig(port=config.ARM_PORT, id=config.ARM_ID, max_relative_target=limit))
 
 
 def open_limp():
