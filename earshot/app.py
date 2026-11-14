@@ -10,6 +10,7 @@ The arm only looks at the table while it is back at rest, so it never hides what
 from __future__ import annotations
 
 import argparse
+import logging
 import threading
 import time
 from typing import Optional
@@ -23,6 +24,8 @@ from earshot.schema import Step, Task
 from earshot.state import state
 from earshot.ui import server
 from earshot.vision import gemini, point, watch
+
+logging.getLogger("lerobot.robots.utils").setLevel(logging.ERROR)   # its per-command clamp notices flood the terminal
 
 TALL = ("cup", "glass", "mug", "bottle")           # containers that need the high, leaning drop
 RECORD_FPS = 5
@@ -41,6 +44,7 @@ class Earshot:
         self.paused = threading.Event()
         self.recording: Optional[dict] = None       # {"name", "frames", "words", "t0"}
         self.pending: Optional[tuple] = None        # a job asked for while the steps were still being worked out
+        self.redo = False                           # the person stopped the move in progress: do that step again
         self.handover_ref: Optional[np.ndarray] = None
 
     @staticmethod
@@ -117,14 +121,27 @@ class Earshot:
         if not state.task:
             state.error("Nothing has been taught yet.")
             return
-        self._end_job()
+        if self.job and self.job.is_alive():
+            if self.paused.is_set():
+                self.paused.clear()
+                state.resume()
+            else:
+                state.robot("Already on it.")
+            return
         self.stop_job.clear()
         self.paused.clear()
+        steps = state.task.steps
+        if steps and all(s.status == "done" for s in steps) or not any(s.status == "done" for s in steps):
+            state.reset_steps()                       # a fresh run
+        else:
+            for s in steps:                           # carry on: keep what is done, try the rest again
+                if s.status != "done":
+                    state.set_step_status(s.n, "todo")
+        state.set_mode(mode)
+        state.robot("Looking at the table...")
         if self.arm:
             state.check(self.arm.follow_camera(self.cam.fresh_frame()))
             self.table = self.arm.table
-        state.reset_steps()
-        state.set_mode(mode)
         self.job = threading.Thread(target=self._run_job, args=(fn,), daemon=True)
         self.job.start()
 
@@ -140,7 +157,9 @@ class Earshot:
         if self.job and self.job.is_alive():
             self.stop_job.set()
             self.paused.clear()
-            self.job.join(timeout=60)
+            if self.arm:
+                self.arm.abort.set()                  # stop the move in progress, not just the next one
+            self.job.join(timeout=20)
         self.job = None
 
     def _gate(self) -> bool:
@@ -154,8 +173,20 @@ class Earshot:
         return next((s for s in task.steps if s.status == "todo"), None) if task else None
 
     def _grasp(self, what: str) -> Optional[dict]:
-        """Where an item is and which way it lies, for picking it up."""
-        return point.grasp_of(self.cam.fresh_frame(), what)
+        """Where an item is and which way it lies, for picking it up.
+
+        A plain point is quick, and for a coloured item the contact outline then gives the
+        centre and direction by measurement. Only items with no outline need the slower
+        question about which way they lie.
+        """
+        frame = self.cam.fresh_frame()
+        hits = point.point_at(frame, [what])
+        if not hits:
+            return None
+        outline = point.contact_outline(frame, hits[0]["x"], hits[0]["y"])
+        if outline is not None:
+            return {"x": hits[0]["x"], "y": hits[0]["y"], "long_side": None, "outline": outline}
+        return point.grasp_of(frame, what)
 
     def _find(self, what: str) -> Optional[tuple[float, float]]:
         hits = point.point_at(self.cam.fresh_frame(), [what])
@@ -164,17 +195,30 @@ class Earshot:
     def _move(self, pick_px, place_px, drop: bool, tall: bool = False, long_side=None, outline=None) -> bool:
         """False when the gripper closed on nothing."""
         if self.arm:
-            return self.arm.pick_place(pick_px, place_px, drop=drop, tall=tall, long_side_px=long_side,
-                                       outline_px=outline)
+            from earshot.arm.motion import Stopped
+            try:
+                return self.arm.pick_place(pick_px, place_px, drop=drop, tall=tall, long_side_px=long_side,
+                                           outline_px=outline)
+            except Stopped:
+                self.arm.back_off()
+                self.redo = True
+                return False
         state.robot(f"(no arm) would move {tuple(round(v) for v in pick_px)} to {tuple(round(v) for v in place_px)}")
         time.sleep(1.0)
         return True
 
     def _do_step(self, step: Step, place_px, drop: bool, verify) -> bool:
-        """Pick the step's item and put it at place_px; check with the camera; retry once."""
-        for attempt in (1, 2):
+        """Pick the step's item and put it at place_px; check with the camera; retry once.
+
+        A stop from the person ("stop", "try again") ends the move in progress, sends the arm
+        back to rest, and the step is done again from a fresh look; that does not use up the retry.
+        """
+        attempt = 1
+        while attempt <= 2:
             if not self._gate():
                 return False
+            self.redo = False
+            state.robot(f"Looking for the {step.item}...")
             grasp = self._grasp(step.item)
             if grasp is None:
                 state.check(f"Cannot see {step.item} on the table.")
@@ -184,6 +228,9 @@ class Earshot:
             state.robot(f"Step {step.n}: {step.item} to {step.destination}" + (" (second try)" if attempt == 2 else ""))
             held = self._move(pick_px, place_px, drop, tall=any(t in step.destination.lower() for t in TALL),
                               long_side=grasp["long_side"], outline=grasp.get("outline"))
+            if self.redo:
+                state.check(f"Step {step.n} stopped by you; starting it again.")
+                continue
             ok, why = verify() if held else (False, "the gripper closed on nothing; looking again")
             if ok:
                 state.pick_succeeded()
@@ -192,6 +239,7 @@ class Earshot:
             state.check(f"Step {step.n} not right: {why}")
             if attempt == 1:
                 state.pick_retried()
+            attempt += 1
         return False
 
     def _destination_px(self, step: Step, frame) -> Optional[tuple[float, float]]:
@@ -313,6 +361,8 @@ class Earshot:
             self._start_job(self.do_alone, "doing")
         elif act == "pause":
             self.paused.set()
+            if self.arm and self.job and self.job.is_alive():
+                self.arm.abort.set()                  # stop now; the step restarts on "resume"
             state.pause()
         elif act == "resume":
             self.paused.clear()
@@ -345,12 +395,20 @@ class Earshot:
             self._setting("grip", +0.2 if args.get("level") == "firmer" else -0.2, said)
         elif act == "set_speed":
             self._setting("speed", +0.2 if args.get("level") == "faster" else -0.2, said)
-        elif act in ("retry_last", "skip_step") and task:
-            last = next((s for s in reversed(task.steps) if s.status in ("failed", "done", "doing")), None)
-            if act == "retry_last" and last:
-                state.set_step_status(last.n, "todo")
-                self._corrected(said, f"retrying step {last.n}")
-            elif act == "skip_step" and (nxt := self._next_todo()):
+        elif act == "retry_last" and task:
+            doing = next((s for s in task.steps if s.status == "doing"), None)
+            if doing and self.arm and self.job and self.job.is_alive():
+                self.arm.abort.set()                  # stop this attempt; _do_step starts the same step again
+                self._corrected(said, f"stopped and restarted step {doing.n}")
+            else:
+                last = next((s for s in reversed(task.steps) if s.status in ("failed", "done")), None)
+                if last:
+                    state.set_step_status(last.n, "todo")
+                    self._corrected(said, f"will do step {last.n} again")
+                    if not (self.job and self.job.is_alive()):
+                        self._start_job(self.do_alone, "doing")
+        elif act == "skip_step" and task:
+            if (nxt := self._next_todo()):
                 state.set_step_status(nxt.n, "done")
                 self._corrected(said, f"skipped step {nxt.n}")
 
@@ -403,15 +461,17 @@ class Earshot:
         except KeyboardInterrupt:
             pass
         finally:
-            self._end_job()
-            self.cam.stop()
-            if self.arm:
-                self.arm.close()
+            try:
+                self._end_job()
+            finally:
+                self.cam.stop()
+                if self.arm:
+                    self.arm.close()              # back to rest, motors off
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-arm", action="store_true")
-    ap.add_argument("--speed", type=float, default=0.4)
+    ap.add_argument("--speed", type=float, default=0.6)
     args = ap.parse_args()
     Earshot(use_arm=not args.no_arm, speed=args.speed).run()
