@@ -2,7 +2,9 @@ Tagline: Teach a robot arm a table-top task by doing it once while you talk, the
 
 ## Inspiration
 
-The week before, I trained an imitation policy on this same arm. One task took hours of recorded demonstrations. While building a previous product I shadowed assistants at dental practices, where a new assistant learns by watching once and being corrected. Vibe coding let people build software by describing it. Earshot lets someone teach a robot by doing the task once.
+Teaching a robot one task today needs a robot-learning engineer and hours of teleoperation: driving the arm by hand, over and over, to record demonstrations. I did exactly that the week before, on this same arm, for a single task. But the people who know what the robot should do are not engineers. While building a previous product I shadowed assistants at dental practices. The assistant is the one who knows which instrument comes next. A new assistant learns by watching once, listening, and being corrected.
+
+That is how people teach people, and talking is the most natural way to pass on what matters. Vibe coding let anyone build software by describing it. Earshot lets anyone teach a robot by doing the task once and talking it through.
 
 ## What it does
 
@@ -36,7 +38,9 @@ A tilted camera sees an item's sides. Only the points where it meets the table m
 
 ## What's next for Earshot
 
-A more reliable grasp, more reach, items without a clear colour. It does pick and place only, not new skills such as writing or inserting a plug.
+A more reliable grasp, more reach, and items without a clear colour. Today it does pick and place only, not new skills such as writing or inserting a plug.
+
+The larger idea: every lesson leaves a video, a transcript, the steps, the corrections and a camera check of each move. That is labelled data collected as a side effect of use. It could train a policy for the same task far faster than recording teleoperation by hand, so the person who knows the job teaches it once and the robot keeps getting better at it.
 
 ## Built with
 

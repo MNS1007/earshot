@@ -8,6 +8,23 @@ There is no trained policy, no teleoperation data and no fine-tuning. The model 
 
 Built solo at VexoHacks, Y Combinator, San Francisco. Everything in this repository was written on 14 November 2026. The commit history shows the order.
 
+## Why this matters
+
+Teaching a robot a task today takes two things most workplaces do not have.
+
+- **Robot-learning skill.** Someone has to set up cameras, record demonstrations, label them, train a policy and debug it.
+- **Teleoperation.** The demonstrations are recorded by driving the arm by hand, many times over. It is slow and physically tiring. The week before this hackathon I spent hours doing exactly that for one task on this same arm.
+
+Meanwhile the knowledge of what the robot should do sits with someone else: the person who does the job. In a dental practice it is the assistant who knows which instrument comes next and where it goes. That person is the expert, and they are not a robotics engineer.
+
+So the way to put robots within reach of everyone is to let the expert teach the way they already teach a new colleague: do the task once, and talk while doing it. Speech carries what a video cannot: which thing matters, why it goes there, what the rule is. Showing carries what speech leaves out. Earshot takes both, and a general model fills in the rest.
+
+What that gives:
+
+- **Anyone can teach.** No teleoperation rig and no training run. The person who knows the job is the one who teaches it.
+- **Corrections are part of teaching.** "Yellow before blue" or "grip harder" changes the task on the spot, and the change is remembered.
+- **Every lesson is also data.** Each taught task leaves a video, a transcript, an ordered list of steps, the corrections given, and a camera check of every move the robot made. That is labelled, supervised data, collected as a side effect of normal use. It could be used to train a policy for the same task later, much faster than recording teleoperation by hand. That last step is not built here.
+
 ## How it works
 
 1. **Watch.** Say "watch me". The app records the table at 5 frames a second and collects the words the band hears. Say you are done to stop.
