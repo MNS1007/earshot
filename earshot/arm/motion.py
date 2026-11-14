@@ -16,8 +16,9 @@ from earshot.arm import kin, robot as arm
 from earshot.arm.table import Table
 
 RATE_HZ = 30
-GRIP_OPEN = 70.0          # 0-100, LeRobot's gripper scale
-ABOVE_TABLE_GRASP = 0.012  # fingertip height above the table when closing, metres
+GRIP_OPEN = 95.0          # 0-100, LeRobot's gripper scale: wide, so the closing jaws centre the item
+ABOVE_TABLE_APPROACH = 0.025  # lowered to here normally; from here down the arm feels for the table
+ABOVE_TABLE_GRASP = 0.006     # height for setting an item back down on the table
 ABOVE_TABLE_HOVER = 0.06
 ABOVE_TABLE_DROP = 0.14    # over a tall container; the gripper leans at this height
 ABOVE_TABLE_LOW_DROP = 0.08  # over a bowl or a box
@@ -44,6 +45,15 @@ class Arm:
         action = {f"{j}.pos": float(v) for j, v in zip(config.ARM_JOINTS, arm.to_motor(self.robot, q))}
         action[f"{arm.GRIPPER}.pos"] = float(grip)
         self.robot.send_action(action)
+
+    def _glide(self, target: np.ndarray, timeout: float) -> None:
+        """Like move_joints but gives up waiting after `timeout`, for moves that may meet the table."""
+        start = arm.read_joints(self.robot)
+        n = max(2, int(np.ceil(np.max(np.abs(target - start)) / (0.3 + 3.0 * self.speed))))
+        for i in range(1, n + 1):
+            self._send(start + (target - start) * i / n, self._grip_now)
+            time.sleep(1.0 / RATE_HZ)
+        self._settle(target, self._grip_now, tol_deg=0.6, timeout=timeout)
 
     def move_joints(self, target: np.ndarray, grip: Optional[float] = None) -> None:
         """Glide to `target` (degrees). Blocks until there."""
@@ -151,7 +161,66 @@ class Arm:
         turn = (across - radial + 90.0) % 180.0 - 90.0               # jaws are symmetric: never turn more than 90
         return float(radial + turn)
 
-    def pick_place(self, pick_px, place_px, drop: bool, tall: bool = False, long_side_px=None) -> bool:
+    def footprint(self, outline_px) -> Optional[tuple[float, float, Optional[float]]]:
+        """Middle of an item's base and the direction of its long side, from its ground-contact outline.
+
+        The outline pixels are true table points, so they are mapped to the table exactly,
+        whatever the camera's tilt or the item's height. Seen from above at an angle, the
+        visible part of a box's base is two edges meeting at the nearest corner, and the
+        outline's two ends are opposite corners of the base: its middle is half way between
+        them. (For a round item the ends are the two sides of the circle: same answer.)
+        When only one edge shows (the item is square-on to the camera) the middle of the base
+        cannot be known from the outline, and None is returned.
+        Returns (x, y, long_side_direction_deg or None) in the arm's frame.
+        """
+        pts = np.array([self.table.to_arm(u, v) for u, v in outline_px])
+        if len(pts) < 12:
+            return None
+        k = max(2, len(pts) // 20)
+        a, b = pts[:k].mean(axis=0), pts[-k:].mean(axis=0)         # the two ends of the outline
+        chord = b - a
+        length = float(np.linalg.norm(chord))
+        if length < 0.01:
+            return None
+        normal = np.array([-chord[1], chord[0]]) / length
+        off = (pts - a) @ normal
+        i = int(np.argmax(np.abs(off)))
+        corner = pts[i]
+        if abs(off[i]) < 0.2 * length:                             # nearly straight: one edge only
+            return None
+        e1, e2 = corner - a, b - corner
+        long_edge = e1 if np.linalg.norm(e1) >= np.linalg.norm(e2) else e2
+        ratio = max(np.linalg.norm(e1), np.linalg.norm(e2)) / max(1e-6, min(np.linalg.norm(e1), np.linalg.norm(e2)))
+        direction = float(np.rad2deg(np.arctan2(long_edge[1], long_edge[0]))) if ratio > 1.25 else None
+        centre = (a + b) / 2.0
+        return float(centre[0]), float(centre[1]), direction
+
+    def lower_until_touch(self, floor: float = -0.012, slice_m: float = 0.004) -> float:
+        """Lower over the current spot until the fingertips press on the table. Returns the height reached.
+
+        No height is assumed: the arm goes down in thin slices and after each one compares
+        where its joints are with where they were told to be. In free air that gap stays
+        small and steady; when the fingers meet the table it jumps, and the arm stops there.
+        `floor` (below the calibrated table height) is only a backstop.
+        """
+        x, y, h = self._at
+        q = arm.read_joints(self.robot)
+        gaps: list[float] = []
+        while h - slice_m >= floor:
+            h -= slice_m
+            try:
+                q = self._solve(x, y, h, seed=q)
+            except ReachError:
+                break
+            self._glide(q, timeout=0.45)
+            gap = float(np.max(np.abs(arm.read_joints(self.robot)[:4] - q[:4])))
+            if len(gaps) >= 3 and gap > float(np.median(gaps)) + 1.2:
+                break                                              # pressing on the table
+            gaps.append(gap)
+        self._at = (x, y, h)
+        return h
+
+    def pick_place(self, pick_px, place_px, drop: bool, tall: bool = False, long_side_px=None, outline_px=None) -> bool:
         """Pick the item at `pick_px` and put it at `place_px` (camera pixels).
 
         drop=True releases from above (into a container; `tall` for a cup); drop=False sets it
@@ -162,14 +231,25 @@ class Arm:
         """
         px, py = self.table.to_arm(*pick_px)
         qx, qy = self.table.to_arm(*place_px)
+        seen_direction = None
+        base = self.footprint(outline_px) if outline_px is not None else None
+        if base and np.hypot(base[0] - px, base[1] - py) < 0.04:
+            # The measured middle of the base beats the model's point. If the two disagree by more
+            # than an item's width, the outline was probably cut by something in front: keep the model's.
+            px, py, seen_direction = base
         far = float(np.hypot(qx, qy))
         if far > MAX_PLACE_REACH:                # e.g. a container whose near edge is in reach but whose middle is not
             qx, qy = qx * MAX_PLACE_REACH / far, qy * MAX_PLACE_REACH / far
-        self.jaw_deg = self.jaw_across(pick_px, *long_side_px) if long_side_px else None
+        if seen_direction is not None:            # jaws square to the measured long side
+            radial = float(np.rad2deg(np.arctan2(py, px)))
+            self.jaw_deg = radial + ((seen_direction + 90.0 - radial + 90.0) % 180.0 - 90.0)
+        else:
+            self.jaw_deg = self.jaw_across(pick_px, *long_side_px) if long_side_px else None
         closed = max(0.0, 22.0 - 22.0 * self.grip)
         self.set_gripper(GRIP_OPEN, wait=0.2)
         self.move_xyz(px, py, ABOVE_TABLE_HOVER)
-        self.move_height(ABOVE_TABLE_GRASP)
+        self.move_height(ABOVE_TABLE_APPROACH)
+        self.lower_until_touch()                 # fingertips on the table, so the item is gripped low
         self.set_gripper(closed)
         self.move_height(ABOVE_TABLE_HOVER)
         if not self.holding_something():         # the fingers met: nothing is between them
@@ -182,7 +262,7 @@ class Arm:
             self.move_xyz(qx, qy, ABOVE_TABLE_DROP if tall else ABOVE_TABLE_LOW_DROP)
         else:
             self.move_xyz(qx, qy, ABOVE_TABLE_HOVER)
-            self.move_height(ABOVE_TABLE_GRASP + 0.004)
+            self.move_height(ABOVE_TABLE_GRASP)
         self.set_gripper(GRIP_OPEN, wait=0.3)
         if not drop:
             self.move_height(ABOVE_TABLE_HOVER)
