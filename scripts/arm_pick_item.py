@@ -116,7 +116,8 @@ try:
 
     bot.look_if_holding = look
     input("Press Enter to move, Ctrl+C to cancel...")
-    held = bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall, long_side_px=long_side,
+    tall = args.tall or any(w in (args.to or "").lower() for w in ("cup", "box", "bin", "tub", "jar", "container"))
+    held = bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=tall, long_side_px=long_side,
                           outline_px=outline)
     print("gripper felt the item: carried it" if held else "gripper closed on nothing: missed")
     if args.check:

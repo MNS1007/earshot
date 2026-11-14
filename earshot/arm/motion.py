@@ -38,6 +38,7 @@ EMPTY_GRIPPER_READS = 2.0    # what the gripper position reads when it has close
 RAKE_STEP_BACK = 0.015       # how far to step back when the fixed jaw comes down on top of the item
 ON_TABLE = 0.014             # a fingertip measured lower than this is on the table, not on an item
 RAKE_GAP = 0.085             # fingertip gap while coming down: about the widest at which the swinging jaw still reaches the table
+INTO_CONTAINER = 0.06        # how far past a container's near side to release, so the item falls inside
 MAX_PLACE_REACH = 0.30       # metres from the base; a destination further out is approached as far as this
 
 
@@ -345,6 +346,12 @@ class Arm:
         """
         px, py = self.table.to_arm(*pick_px)
         qx, qy = self.table.to_arm(*place_px)
+        if drop:
+            # The camera's point on a container is where its near side stands on the table.
+            # Releasing there drops the item against the outside of the wall, so aim a little
+            # further on, over the inside.
+            beyond = np.array(self.table.to_arm(place_px[0], place_px[1] - 12.0)) - np.array([qx, qy])
+            qx, qy = np.array([qx, qy]) + beyond / np.linalg.norm(beyond) * INTO_CONTAINER
         far = float(np.hypot(qx, qy))
         if far > MAX_PLACE_REACH:                # e.g. a container whose near edge is in reach but whose middle is not
             qx, qy = qx * MAX_PLACE_REACH / far, qy * MAX_PLACE_REACH / far

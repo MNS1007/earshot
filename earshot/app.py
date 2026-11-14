@@ -27,7 +27,7 @@ from earshot.vision import gemini, point, watch
 
 logging.getLogger("lerobot.robots.utils").setLevel(logging.ERROR)   # its per-command clamp notices flood the terminal
 
-TALL = ("cup", "glass", "mug", "bottle")           # containers that need the high, leaning drop
+TALL = ("cup", "glass", "mug", "bottle", "box", "bin", "tub", "jar", "container", "basket")   # walls too high for the low drop
 RECORD_FPS = 5
 
 
