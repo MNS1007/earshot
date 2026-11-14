@@ -127,11 +127,44 @@ AXIS_SCHEMA = {
 }
 
 
+def contact_outline(image_bgr: np.ndarray, x: float, y: float) -> np.ndarray | None:
+    """Pixels where a coloured item meets the table, left to right, as an (N, 2) array.
+
+    The item's coloured blob around (x, y) is found by its hue. In every image column the
+    blob's lowest pixel is taken: seen from above at any tilt, that lower edge of the
+    silhouette is where the item stands on the table, so unlike the rest of the blob these
+    pixels really are table points and can be mapped by the table calibration.
+    Returns None when (x, y) is not on a clearly coloured item (white, grey, black).
+    """
+    h, w = image_bgr.shape[:2]
+    hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+    u, v = int(np.clip(x, 3, w - 4)), int(np.clip(y, 3, h - 4))
+    near = hsv[v - 3: v + 4, u - 3: u + 4].reshape(-1, 3)
+    near = near[near[:, 1] > 80]
+    if len(near) < 10:
+        return None
+    dh = np.abs(hsv[:, :, 0].astype(np.int16) - int(np.median(near[:, 0])))
+    dh = np.minimum(dh, 180 - dh)
+    mask = ((dh < 12) & (hsv[:, :, 1] > 80) & (hsv[:, :, 2] > 50)).astype(np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    label = labels[v, u]
+    if label == 0 or not 150 <= stats[label, cv2.CC_STAT_AREA] <= 0.08 * h * w:
+        return None
+    ys, xs = np.nonzero(labels == label)
+    cols = np.arange(xs.min(), xs.max() + 1)
+    lowest = np.full(len(cols), -1.0)
+    np.maximum.at(lowest, xs - xs.min(), ys.astype(float))
+    keep = lowest >= 0
+    return np.stack([cols[keep].astype(float), lowest[keep]], axis=1)
+
+
 def grasp_of(image: np.ndarray | str | Path, description: str, model: str = config.POINT_MODEL) -> dict | None:
     """Where to grip one object and which way it lies.
 
-    Returns {"x", "y", "long_side": ((ax, ay), (bx, by)) or None} in pixels, or None when the
-    object is not in the picture. `long_side` is the two ends of the object's longer side where
+    Returns {"x", "y", "long_side": ((ax, ay), (bx, by)) or None, "outline": pixels or None},
+    or None when the object is not in the picture. `outline` is where the item meets the table
+    (see contact_outline); the arm uses it to find the true middle of the item's base. `long_side` is the two ends of the object's longer side where
     it rests on the surface; None for objects with no clear longer side.
     """
     image_bgr = load(image)
@@ -147,7 +180,7 @@ def grasp_of(image: np.ndarray | str | Path, description: str, model: str = conf
     if not centre or list(a.get("centre", [0, 0])) == [0, 0]:
         return None
     long_side = (end_a, end_b) if a.get("elongated") and end_a and end_b and end_a != end_b else None
-    return {"x": centre[0], "y": centre[1], "long_side": long_side}
+    return {"x": centre[0], "y": centre[1], "long_side": long_side, "outline": contact_outline(image_bgr, *centre)}
 
 
 def list_items(image: np.ndarray | str | Path, model: str = config.POINT_MODEL) -> list[dict]:
