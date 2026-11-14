@@ -17,12 +17,14 @@ from earshot.arm import kin, robot as arm
 from earshot.arm.table import Table
 
 RATE_HZ = 30
-GRIP_OPEN = 95.0          # 0-100, LeRobot's gripper scale: wide, so the closing jaws centre the item
+GRIP_OPEN = 45.0          # 0-100, LeRobot's gripper scale: used for letting go
 ABOVE_TABLE_APPROACH = 0.025  # lowered to here normally; from here down the arm feels for the table
 ABOVE_TABLE_GRASP = 0.006     # height for setting an item back down on the table
 ABOVE_TABLE_HOVER = 0.06
 ABOVE_TABLE_DROP = 0.14    # over a tall container; the gripper leans at this height
 ABOVE_TABLE_LOW_DROP = 0.08  # over a bowl or a box
+CLEARANCE = 0.014            # spare room each side of an item between the open fingers (about the pointing error)
+ITEM_WIDTH_GUESS = 0.035     # used only when an item's width could not be measured from its outline
 MAX_PLACE_REACH = 0.30       # metres from the base; a destination further out is approached as far as this
 
 
@@ -41,6 +43,7 @@ class Arm:
         self.last_lean = 0.0
         self.jaw_deg: Optional[float] = None    # direction the jaws close along; None = toward the base
         self.abort = threading.Event()          # set from another thread to stop the current move
+        self._closed = 5.0                      # the gripper setting last used to close on an item
 
     # -- low level -------------------------------------------------------------------------
     def _send(self, q: np.ndarray, grip: float) -> None:
@@ -100,12 +103,6 @@ class Arm:
     def _solve(self, x: float, y: float, above_table: float, seed=None) -> np.ndarray:
         z = self.table.table_z + above_table
         q, err, lean, ok = kin.ik_down(x, y, z, seed_deg=seed, jaw_deg=self.jaw_deg)
-        if self.jaw_deg is not None and seed is None:
-            # The jaws look the same turned half way round: take whichever needs less wrist roll.
-            q2, err2, lean2, ok2 = kin.ik_down(x, y, z, jaw_deg=self.jaw_deg + 180.0)
-            if ok2 and err2 <= 0.008 and (abs(q2[4]) < abs(q[4]) or not ok or err > 0.008):
-                q, err, lean, ok = q2, err2, lean2, ok2
-                self.jaw_deg += 180.0
         if not ok or err > 0.008:
             raise ReachError(f"Cannot reach x {x * 100:.0f} cm, y {y * 100:.0f} cm at {above_table * 100:.0f} cm "
                              f"above the table (off by {err * 1000:.0f} mm).")
@@ -165,7 +162,7 @@ class Arm:
         turn = (across - radial + 90.0) % 180.0 - 90.0               # jaws are symmetric: never turn more than 90
         return float(radial + turn)
 
-    def footprint(self, outline_px) -> Optional[tuple[float, float, Optional[float]]]:
+    def footprint(self, outline_px) -> Optional[tuple[float, float, Optional[float], float]]:
         """Middle of an item's base and the direction of its long side, from its ground-contact outline.
 
         The outline pixels are true table points, so they are mapped to the table exactly,
@@ -175,7 +172,7 @@ class Arm:
         them. (For a round item the ends are the two sides of the circle: same answer.)
         When only one edge shows (the item is square-on to the camera) the middle of the base
         cannot be known from the outline, and None is returned.
-        Returns (x, y, long_side_direction_deg or None) in the arm's frame.
+        Returns (x, y, long_side_direction_deg or None, short_side_m) in the arm's frame.
         """
         pts = np.array([self.table.to_arm(u, v) for u, v in outline_px])
         if len(pts) < 12:
@@ -197,7 +194,7 @@ class Arm:
         ratio = max(np.linalg.norm(e1), np.linalg.norm(e2)) / max(1e-6, min(np.linalg.norm(e1), np.linalg.norm(e2)))
         direction = float(np.rad2deg(np.arctan2(long_edge[1], long_edge[0]))) if ratio > 1.25 else None
         centre = (a + b) / 2.0
-        return float(centre[0]), float(centre[1]), direction
+        return float(centre[0]), float(centre[1]), direction, float(min(np.linalg.norm(e1), np.linalg.norm(e2)))
 
     def lower_until_touch(self, floor: float = -0.012, slice_m: float = 0.004) -> float:
         """Lower over the current spot until the fingertips press on the table. Returns the height reached.
@@ -235,12 +232,12 @@ class Arm:
         """
         px, py = self.table.to_arm(*pick_px)
         qx, qy = self.table.to_arm(*place_px)
-        seen_direction = None
+        seen_direction, width = None, ITEM_WIDTH_GUESS
         base = self.footprint(outline_px) if outline_px is not None else None
         if base and np.hypot(base[0] - px, base[1] - py) < 0.04:
             # The measured middle of the base beats the model's point. If the two disagree by more
             # than an item's width, the outline was probably cut by something in front: keep the model's.
-            px, py, seen_direction = base
+            px, py, seen_direction, width = base
         far = float(np.hypot(qx, qy))
         if far > MAX_PLACE_REACH:                # e.g. a container whose near edge is in reach but whose middle is not
             qx, qy = qx * MAX_PLACE_REACH / far, qy * MAX_PLACE_REACH / far
@@ -249,8 +246,25 @@ class Arm:
             self.jaw_deg = radial + ((seen_direction + 90.0 - radial + 90.0) % 180.0 - 90.0)
         else:
             self.jaw_deg = self.jaw_across(pick_px, *long_side_px) if long_side_px else None
-        closed = max(0.0, 22.0 - 22.0 * self.grip)
-        self.set_gripper(GRIP_OPEN, wait=0.2)
+        # The fixed jaw carries the point the arm steers; the other jaw opens to one side of it.
+        # Open just wider than the item, and steer the fixed jaw to half that gap short of the
+        # item's middle, so the item sits in the centre of the gap when the fingers come down.
+        gap = min(width, 0.07) + 2 * CLEARANCE
+        jaw_line = self.jaw_deg if self.jaw_deg is not None else float(np.rad2deg(np.arctan2(py, px)))
+        # The gap can be on either side of the fixed jaw: take the side that needs less wrist roll.
+        table_z = self.table.table_z
+        rolls = []
+        for line in (jaw_line, jaw_line + 180.0):
+            q, err, _, ok = kin.ik_down(px, py, table_z + ABOVE_TABLE_APPROACH, jaw_deg=line)
+            rolls.append(abs(q[4]) if ok and err < 0.008 else 1e9)
+        if rolls[1] < rolls[0]:
+            jaw_line += 180.0
+        self.jaw_deg = jaw_line
+        toward_moving_jaw = np.array([np.cos(np.deg2rad(jaw_line)), np.sin(np.deg2rad(jaw_line))])
+        px, py = np.array([px, py]) - toward_moving_jaw * gap / 2.0
+        closed = max(0.0, kin.gripper_for_gap(max(width - 0.012, 0.004)) * (1.0 - 0.5 * self.grip))
+        self._closed = closed
+        self.set_gripper(kin.gripper_for_gap(gap), wait=0.2)
         self.move_xyz(px, py, ABOVE_TABLE_HOVER)
         self.move_height(ABOVE_TABLE_APPROACH)
         self.lower_until_touch()                 # fingertips on the table, so the item is gripped low
@@ -275,7 +289,7 @@ class Arm:
 
     def holding_something(self) -> bool:
         """After closing: a gripper that stopped short of its target is holding an item."""
-        return arm.read_gripper(self.robot) > max(0.0, 22.0 - 22.0 * self.grip) + 4.0
+        return arm.read_gripper(self.robot) > self._closed + 3.0
 
     def back_off(self) -> None:
         """After a stop: let go of anything held, lift clear, and return to rest."""
