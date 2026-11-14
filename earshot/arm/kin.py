@@ -130,3 +130,51 @@ def ik_down(x: float, y: float, z: float, seed_deg=None, iters: int = 120, max_e
                 return q, err, tilt, ok
     _, q, err, tilt, ok = best
     return q, err, tilt, ok
+
+
+# ---- the gripper itself -------------------------------------------------------------------
+# One jaw is fixed and carries the "gripper frame" at its tip; the other swings open to one
+# side only. So an open gripper is not centred on the frame: the gap lies entirely on the
+# moving jaw's side, and the frame has to be aimed beside an item, not at its middle.
+
+@lru_cache(maxsize=1)
+def _jaw_table() -> tuple[np.ndarray, np.ndarray]:
+    """(jaw angles in degrees, gap in metres between the two fingertips at each angle), from the URDF."""
+    robot = _solver().robot
+    fk(np.zeros(len(config.ARM_JOINTS)))
+
+    def tips(theta_deg: float):
+        robot.set_joint("gripper", np.deg2rad(theta_deg))
+        robot.update_kinematics()
+        return (np.array(robot.get_T_world_frame(config.EE_FRAME)),
+                np.array(robot.get_T_world_frame("moving_jaw_so101_v1_link")))
+
+    frame, jaw0 = tips(0.0)
+    tip_in_jaw = np.linalg.inv(jaw0) @ frame[:, 3]              # the moving fingertip, where it meets the fixed one
+    approach = frame[:3, :3] @ np.linalg.inv(_down_rotation())[:, 2]
+    angles = np.arange(0.0, 91.0, 2.0)
+    gaps = []
+    for a in angles:
+        moved = (tips(a)[1] @ tip_in_jaw)[:3] - frame[:3, 3]
+        gaps.append(float(np.linalg.norm(moved - (moved @ approach) * approach)))   # sideways part only
+    tips(0.0)
+    return angles, np.array(gaps)
+
+
+def gripper_for_gap(gap_m: float) -> float:
+    """Gripper setting (LeRobot's 0-100 scale) that leaves `gap_m` between the fingertips."""
+    angles, gaps = _jaw_table()
+    theta = float(np.interp(gap_m, gaps, angles))
+    cal = json.loads(config.ARM_CALIBRATION.read_text())["gripper"]
+    lo = (cal["range_min"] - 2047) * 360.0 / 4095
+    hi = (cal["range_max"] - 2047) * 360.0 / 4095
+    return float(np.clip((theta - lo) / (hi - lo) * 100.0, 0.0, 100.0))
+
+
+def gap_at_gripper(setting: float) -> float:
+    """The reverse: fingertip gap in metres at a 0-100 gripper setting."""
+    angles, gaps = _jaw_table()
+    cal = json.loads(config.ARM_CALIBRATION.read_text())["gripper"]
+    lo = (cal["range_min"] - 2047) * 360.0 / 4095
+    hi = (cal["range_max"] - 2047) * 360.0 / 4095
+    return float(np.interp(lo + setting / 100.0 * (hi - lo), angles, gaps))
