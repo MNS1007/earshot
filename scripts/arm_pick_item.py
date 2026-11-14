@@ -72,6 +72,8 @@ try:
     if args.check:
         r = point.check_placed(cam.fresh_frame(), args.item, args.to or "the table near the front edge")
         print("camera check:", r)
+except motion.ReachError as e:
+    print(f"\nOut of reach: {e}\nPut the item so its near side is 17 to 24 cm from the arm's base.")
 except KeyboardInterrupt:
     print("\nCancelled.")
 finally:
