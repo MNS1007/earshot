@@ -24,6 +24,10 @@ ABOVE_TABLE_HOVER = 0.06
 ABOVE_TABLE_DROP = 0.14    # over a tall container; the gripper leans at this height
 ABOVE_TABLE_LOW_DROP = 0.08  # over a bowl or a box
 RAKE_LEAD = 0.02             # the fixed jaw lands this far in front of the item's near side (twice the pointing error)
+# Measured on 2026-11-14 from a touch-down picture with a 1 cm grid drawn on the table map: the
+# fixed jaw's tip came down 0.45 cm further along the jaw line and 1.7 cm to its left of the aim.
+TIP_ALONG = 0.0045
+TIP_LEFT = 0.017
 RAKE_STEP_BACK = 0.015       # how far to step back when the fixed jaw comes down on top of the item
 ON_TABLE = 0.014             # a fingertip measured lower than this is on the table, not on an item
 RAKE_GAP = 0.085             # fingertip gap while coming down: about the widest at which the swinging jaw still reaches the table
@@ -267,6 +271,10 @@ class Arm:
             away = np.array([np.cos(np.deg2rad(line)), np.sin(np.deg2rad(line))])
         self.jaw_deg = line
         px, py = np.array([px, py]) - away * RAKE_LEAD
+        # Where the fixed jaw's tip really lands differs from where the model puts it by a small
+        # fixed amount in the gripper's own frame (measured, see TIP_ALONG and TIP_LEFT).
+        left = np.array([-away[1], away[0]])
+        px, py = np.array([px, py]) - away * TIP_ALONG - left * TIP_LEFT
         closed = 3.0 * (1.0 - self.grip)
         self._closed = closed
         self.set_gripper(kin.gripper_for_gap(RAKE_GAP), wait=0.2)
