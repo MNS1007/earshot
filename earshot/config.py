@@ -27,6 +27,7 @@ ARM_PORT = "/dev/tty.usbmodem5B790502351"
 ARM_ID = "follower"
 URDF_PATH = str(Path.home() / "developer/SO-ARM100/Simulation/SO101/so101_new_calib.urdf")
 EE_FRAME = "gripper_frame_link"
+ARM_CALIBRATION = Path.home() / ".cache/huggingface/lerobot/calibration/robots/so_follower" / f"{ARM_ID}.json"
 ARM_JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 
 # Heights above the table, in metres, in the arm's base frame (z of the table found at calibration).
