@@ -1,0 +1,10 @@
+# The voice loop's own environment (.venv-voice, Python 3.12). Never install these into the robot environment.
+#   /Users/mns/anaconda3/envs/lerobot/bin/python -m venv .venv-voice
+#   .venv-voice/bin/pip install -r requirements-voice.txt
+# The band library is not here: it is used from the cloned vexo-open-kit/ folder.
+pipecat-ai[deepgram,openai,google,elevenlabs,silero]==1.16.0
+bleak==3.1.0
+av==19.0.2
+sounddevice==0.5.6
+httpx==0.28.1
+python-dotenv==1.2.4
