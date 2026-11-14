@@ -37,7 +37,7 @@ class Arm:
 
     # -- low level -------------------------------------------------------------------------
     def _send(self, q: np.ndarray, grip: float) -> None:
-        action = {f"{j}.pos": float(v) for j, v in zip(config.ARM_JOINTS, q)}
+        action = {f"{j}.pos": float(v) for j, v in zip(config.ARM_JOINTS, arm.to_motor(self.robot, q))}
         action[f"{arm.GRIPPER}.pos"] = float(grip)
         self.robot.send_action(action)
 

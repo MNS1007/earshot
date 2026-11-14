@@ -2,7 +2,11 @@
 
 Two ways to open it: `open_limp` for hand-guiding (motors never switched on) and `open_holding`
 for motion (motors switched on at the pose the arm is already in, so nothing jumps).
-Joint angles are degrees in LeRobot's convention, which matches the URDF used in kin.py.
+
+Joint angles: LeRobot reports degrees measured from the middle of the range each joint was
+swept through at calibration. The URDF in kin.py measures from the calibration pose itself.
+The two differ by a fixed amount per joint (up to 19 degrees on this arm), worked out here
+from the saved calibration, so `read_joints` and `to_motor` speak the URDF's angles.
 """
 from __future__ import annotations
 
@@ -39,10 +43,26 @@ def open_holding(max_step_deg: float = 4.0):
     return robot
 
 
+def joint_offsets(robot) -> np.ndarray:
+    """Degrees to add to LeRobot's angle to get the URDF's angle, per arm joint."""
+    out = []
+    for j in config.ARM_JOINTS:
+        cal = robot.bus.calibration[j]
+        max_res = robot.bus.resolution(robot.bus.motors[j].model) - 1
+        half_turn = max_res // 2                      # the calibration pose reads exactly this
+        out.append(((cal.range_min + cal.range_max) / 2 - half_turn) * 360.0 / max_res)
+    return np.array(out)
+
+
 def read_joints(robot) -> np.ndarray:
-    """The five arm joint angles in degrees."""
+    """The five arm joint angles in degrees, in the URDF's convention."""
     pos = robot.bus.sync_read("Present_Position", config.ARM_JOINTS)
-    return np.array([pos[j] for j in config.ARM_JOINTS], dtype=float)
+    return np.array([pos[j] for j in config.ARM_JOINTS], dtype=float) + joint_offsets(robot)
+
+
+def to_motor(robot, joints_deg) -> np.ndarray:
+    """URDF-convention angles -> the degrees LeRobot expects in a command."""
+    return np.asarray(joints_deg, dtype=float) - joint_offsets(robot)
 
 
 def read_gripper(robot) -> float:
