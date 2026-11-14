@@ -36,7 +36,10 @@ try:
         print(f"  gripper leaning {lean:.0f} deg from straight down. Is the tip above the mark? How far off, which way?")
         if args.what == "touch":
             input("Press Enter to lower to grasp height...")
-            lean = bot.move_height(motion.ABOVE_TABLE_GRASP)
+            bot.move_height(motion.ABOVE_TABLE_APPROACH)
+            reached = bot.lower_until_touch()
+            lean = bot.last_lean
+            print(f"  felt the table at {reached * 1000:.0f} mm relative to the calibrated table height")
             print(f"  leaning {lean:.0f} deg. Is the tip just above the table, over the mark? How far off, which way?")
         input("Press Enter to go back to rest...")
     else:
