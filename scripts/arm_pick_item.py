@@ -36,6 +36,8 @@ try:
         raise SystemExit(f'The camera cannot see "{args.item}".')
     pick_px = point.near_edge(frame, hits[0]["x"], hits[0]["y"])
     long_side = None
+    outline = point.contact_outline(frame, hits[0]["x"], hits[0]["y"])
+    print("outline of where it meets the table:", "traced" if outline is not None else "not found (no clear colour)")
     print(f"model pointed at ({hits[0]['x']:.0f}, {hits[0]['y']:.0f}); its near edge on the table is at "
           f"({pick_px[0]:.0f}, {pick_px[1]:.0f})")
     if args.to:
@@ -67,7 +69,7 @@ try:
     bot.on_stage = record
     input("Press Enter to move, Ctrl+C to cancel...")
     held = bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall, long_side_px=long_side,
-                          outline_px=None)
+                          outline_px=outline)
     print("gripper felt the item: carried it" if held else "gripper closed on nothing: missed")
     if args.check:
         r = point.check_placed(cam.fresh_frame(), args.item, args.to or "the table near the front edge")

@@ -28,6 +28,9 @@ RAKE_LEAD = 0.02             # the fixed jaw lands this far in front of the item
 # fixed jaw's tip came down 0.45 cm further along the jaw line and 1.7 cm to its left of the aim.
 TIP_ALONG = 0.0045
 TIP_LEFT = 0.017
+CLEARANCE = 0.012            # spare room each side of the item between the open fingertips
+GRIP_DEPTH = 0.012           # how far behind the item's near edge the jaws close
+MAX_GAP = 0.095              # widest fingertip gap at which the swinging jaw still closes near the table
 RAKE_STEP_BACK = 0.015       # how far to step back when the fixed jaw comes down on top of the item
 ON_TABLE = 0.014             # a fingertip measured lower than this is on the table, not on an item
 RAKE_GAP = 0.085             # fingertip gap while coming down: about the widest at which the swinging jaw still reaches the table
@@ -240,6 +243,35 @@ class Arm:
         self._at = (x, y, h)
         return h
 
+    def _sideways_grasp(self, outline_px, away: np.ndarray, left: np.ndarray):
+        """Plan a centre grasp across the camera's view from an item's ground-contact outline.
+
+        The outline's two ends are the item's leftmost and rightmost points on the table as the
+        camera sees it, so the item's middle (sideways) and its width are known exactly. Depth
+        is taken a little way in from the near edge, which is inside any item deeper than about
+        2.5 cm. Returns (middle xy, fingertip gap, unit vector the gap opens along), or None when
+        there is no outline, the item is too wide for the gripper, or the wrist cannot turn there.
+        """
+        if outline_px is None or len(outline_px) < 12:
+            return None
+        pts = np.array([self.table.to_arm(u, v) for u, v in outline_px])
+        across, depth = pts @ left, pts @ away
+        width = float(across.max() - across.min())
+        gap = width + 2 * CLEARANCE
+        if width < 0.008 or gap > MAX_GAP:
+            return None
+        mid_across = float((across.max() + across.min()) / 2.0)
+        near = float(np.percentile(depth[np.abs(across - mid_across) < max(0.004, 0.2 * width)], 10))
+        middle = left * mid_across + away * (near + GRIP_DEPTH)
+        best = None
+        for vec in (left, -left):                 # the gap can open to either side: take the easier wrist turn
+            fixed = middle - vec * gap / 2.0
+            q, err, _, ok = kin.ik_down(fixed[0], fixed[1], self.table.table_z + ABOVE_TABLE_APPROACH,
+                                        jaw_deg=float(np.rad2deg(np.arctan2(vec[1], vec[0]))))
+            if ok and err < 0.008 and (best is None or abs(q[4]) < best[0]):
+                best = (abs(q[4]), vec)
+        return None if best is None else (middle, gap, best[1])
+
     def pick_place(self, pick_px, place_px, drop: bool, tall: bool = False, long_side_px=None, outline_px=None) -> bool:
         """Pick the item at `pick_px` and put it at `place_px` (camera pixels).
 
@@ -257,27 +289,37 @@ class Arm:
         if far > MAX_PLACE_REACH:                # e.g. a container whose near edge is in reach but whose middle is not
             qx, qy = qx * MAX_PLACE_REACH / far, qy * MAX_PLACE_REACH / far
 
-        # Rake grasp. What the camera reports reliably is the point where the item's near side
-        # meets the table; how deep the item is behind that point it cannot see. So the fixed
-        # jaw comes down in the clear space just in front of that point, the gripper is opened
-        # wide with the gap reaching away from the camera, and the closing jaw sweeps the item
-        # up against the fixed one. No width, height or orientation has to be known.
         away = np.array(self.table.to_arm(pick_px[0], pick_px[1] - 12.0)) - np.array([px, py])
         away = away / np.linalg.norm(away)        # along the table, from the camera toward the item
-        line = float(np.rad2deg(np.arctan2(away[1], away[0])))
-        _, err, _, ok = kin.ik_down(px, py, self.table.table_z + ABOVE_TABLE_APPROACH, jaw_deg=line)
-        if not ok or err > 0.008:                 # the wrist cannot turn that far here: rake outward from the base
-            line = float(np.rad2deg(np.arctan2(py, px)))
-            away = np.array([np.cos(np.deg2rad(line)), np.sin(np.deg2rad(line))])
+        left = np.array([-away[1], away[0]])      # along the table, across the camera's view
+        side = self._sideways_grasp(outline_px, away, left)
+        if side is not None:
+            # Centre grasp, jaws closing across the camera's view. Both sides of the item are in
+            # plain sight where it meets the table, so its middle and its width are measured, not
+            # estimated: the gripper opens a little wider than the item, comes down with the item
+            # in the middle of the gap, goes to the table and closes there.
+            middle, gap, line_vec = side
+            line = float(np.rad2deg(np.arctan2(line_vec[1], line_vec[0])))
+            fixed = middle - line_vec * gap / 2.0
+        else:
+            # Rake grasp, for items whose outline could not be traced: the fixed jaw comes down
+            # just in front of the item's near side and the other jaw sweeps the item up to it.
+            line_vec, gap = away, RAKE_GAP
+            line = float(np.rad2deg(np.arctan2(away[1], away[0])))
+            _, err, _, ok = kin.ik_down(px, py, self.table.table_z + ABOVE_TABLE_APPROACH, jaw_deg=line)
+            if not ok or err > 0.008:             # the wrist cannot turn that far here: rake outward from the base
+                line = float(np.rad2deg(np.arctan2(py, px)))
+                line_vec = np.array([np.cos(np.deg2rad(line)), np.sin(np.deg2rad(line))])
+            fixed = np.array([px, py]) - line_vec * RAKE_LEAD
         self.jaw_deg = line
-        px, py = np.array([px, py]) - away * RAKE_LEAD
         # Where the fixed jaw's tip really lands differs from where the model puts it by a small
         # fixed amount in the gripper's own frame (measured, see TIP_ALONG and TIP_LEFT).
-        left = np.array([-away[1], away[0]])
-        px, py = np.array([px, py]) - away * TIP_ALONG - left * TIP_LEFT
+        across = np.array([-line_vec[1], line_vec[0]])
+        px, py = fixed - line_vec * TIP_ALONG - across * TIP_LEFT
+        away = line_vec if side is None else away  # direction to step back if the jaw lands on the item
         closed = 3.0 * (1.0 - self.grip)
         self._closed = closed
-        self.set_gripper(kin.gripper_for_gap(RAKE_GAP), wait=0.2)
+        self.set_gripper(kin.gripper_for_gap(gap), wait=0.2)
         self.move_xyz(px, py, ABOVE_TABLE_HOVER)
         self._stage("1 above")
         for attempt in range(3):
@@ -291,6 +333,8 @@ class Arm:
             # The fingertip stopped well above the table: it is resting on the item, not beside
             # it. Lift, step back toward the camera, and come down again.
             self.move_height(ABOVE_TABLE_HOVER)
+            if side is not None:
+                break                             # centred on a measured outline: stepping back would not help
             px, py = np.array([px, py]) - away * RAKE_STEP_BACK
             self.move_xyz(px, py, ABOVE_TABLE_HOVER)
         self.set_gripper(closed)
