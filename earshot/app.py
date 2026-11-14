@@ -40,6 +40,7 @@ class Earshot:
         self.stop_job = threading.Event()
         self.paused = threading.Event()
         self.recording: Optional[dict] = None       # {"name", "frames", "words", "t0"}
+        self.pending: Optional[tuple] = None        # a job asked for while the steps were still being worked out
         self.handover_ref: Optional[np.ndarray] = None
 
     @staticmethod
@@ -98,10 +99,21 @@ class Earshot:
                         (f", {len(task.rules)} rule(s)." if task.rules else "."))
         except Exception as e:                                       # shown on the screen, not swallowed
             state.error(f"Could not understand the demonstration: {e}")
+            self.pending = None
         state.set_mode("idle")
+        pending, self.pending = self.pending, None
+        if pending and state.task and state.task.steps:
+            self._start_job(*pending)
 
     # ------------------------------------------------------------------ robot jobs
     def _start_job(self, fn, mode: str) -> None:
+        if state.mode == "understanding":
+            self.pending = (fn, mode)
+            state.robot("Still working out the steps. I will start as soon as I have them.")
+            return
+        if self.recording:
+            state.robot("Still watching. Say \"okay, I'm done\" first.")
+            return
         if not state.task:
             state.error("Nothing has been taught yet.")
             return
@@ -285,7 +297,7 @@ class Earshot:
         elif act == "stop_teaching":
             self.stop_teaching()
         elif act in ("tap", "double_tap"):
-            self.stop_teaching() if self.recording else self.start_teaching()
+            pass      # handling objects sets off the band's tap sensor, so taps do not start or stop anything
         elif act == "help_me":
             self._start_job(self.help, "helping")
         elif act == "your_turn":
@@ -370,7 +382,7 @@ class Earshot:
     def run(self) -> None:
         server.set_frame_provider(self.cam.jpeg)
         print("Screen:", server.run())
-        state.robot("Ready. Say \"watch me\" or tap the band to teach a task.")
+        state.robot("Ready. Say \"watch me\" to teach a task.")
         try:
             while True:
                 a = server.next_voice_action(timeout=0.5)
