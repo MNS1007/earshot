@@ -61,12 +61,13 @@ class EchoGate:
 
 class BandInput:
     def __init__(self, worker, number: Optional[int], transport: str = "ble",
-                 echo_gate: Optional[EchoGate] = None, taps: bool = True) -> None:
+                 echo_gate: Optional[EchoGate] = None, taps: bool = True, port: Optional[str] = None) -> None:
         if transport != "sim" and number is None:
             raise RuntimeError("A real band needs its number: --band N (the number on the band's bag).")
         self.worker = worker
         self.number = number              # None only for the pretend band
         self.transport = transport
+        self.port = port                  # serial only: which USB port is the band (the arm is one too)
         self.echo_gate = echo_gate
         self.taps = taps
         self.band = None
@@ -127,6 +128,8 @@ class BandInput:
         if self.transport == "sim":
             from vexo_open import audio
             options["audio_packets"] = audio.ogg_packets(str(SAMPLE_SPEECH))
+        if self.transport == "serial" and self.port:
+            options["port"] = self.port
         self._decoder = self._new_decoder()                     # slow the first time: before the mic goes on
         band = await vexo.Band.connect(self.number, transport=self.transport, auto_reconnect=True, **options)
         if self.number is not None and band.number != self.number:

@@ -27,6 +27,9 @@ def parse() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Earshot voice loop: band -> text -> one action -> main app")
     p.add_argument("--band", type=int, default=None, help="the number on your band's bag (or set EARSHOT_BAND)")
     p.add_argument("--sim", action="store_true", help="use the kit's pretend band, which plays its sample speech")
+    p.add_argument("--usb", action="store_true", help="reach the band over its USB cable instead of Bluetooth")
+    p.add_argument("--port", default=None, help="with --usb: the band's port, e.g. /dev/cu.usbmodem1101 "
+                                                "(needed because the robot arm is a USB port too)")
     p.add_argument("--say", action="append", default=[], metavar="WORDS",
                    help="typed words instead of the band; skips speech-to-text (may be repeated)")
     p.add_argument("--no-tts", action="store_true", help="never speak, only print")
@@ -88,7 +91,8 @@ async def band_mode(args, built) -> int:
 
     DISPATCH.listeners.append(show)
     band = BandInput(built.worker, None if args.sim and args.band is None else args.band,
-                     "sim" if args.sim else "ble", echo_gate=built.echo_gate, taps=not args.no_taps)
+                     "sim" if args.sim else ("serial" if args.usb else "ble"), echo_gate=built.echo_gate,
+                     taps=not args.no_taps, port=args.port)
     runner = WorkerRunner(handle_sigint=True)
     await runner.add_workers(built.worker)
     running = asyncio.ensure_future(runner.run())
