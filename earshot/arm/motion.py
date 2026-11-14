@@ -36,6 +36,7 @@ class Arm:
         self._grip_now = self.home_grip
         self._at = (0.0, 0.0, ABOVE_TABLE_HOVER)
         self.last_lean = 0.0
+        self.jaw_deg: Optional[float] = None    # direction the jaws close along; None = toward the base
 
     # -- low level -------------------------------------------------------------------------
     def _send(self, q: np.ndarray, grip: float) -> None:
@@ -72,7 +73,7 @@ class Arm:
         time.sleep(wait)
 
     def _solve(self, x: float, y: float, above_table: float, seed=None) -> np.ndarray:
-        q, err, lean, ok = kin.ik_down(x, y, self.table.table_z + above_table, seed_deg=seed)
+        q, err, lean, ok = kin.ik_down(x, y, self.table.table_z + above_table, seed_deg=seed, jaw_deg=self.jaw_deg)
         if not ok or err > 0.008:
             raise ReachError(f"Cannot reach x {x * 100:.0f} cm, y {y * 100:.0f} cm at {above_table * 100:.0f} cm "
                              f"above the table (off by {err * 1000:.0f} mm).")
@@ -122,21 +123,34 @@ class Arm:
         self.move_joints(self.home)
 
     # -- the one call the rest of the system uses --------------------------------------------
-    def pick_place(self, pick_px, place_px, drop: bool, tall: bool = False) -> bool:
+    def jaw_across(self, pick_px, end_a_px, end_b_px) -> float:
+        """Jaw direction that closes across an item's narrow side, given the two ends of its long side."""
+        ax, ay = self.table.to_arm(*end_a_px)
+        bx, by = self.table.to_arm(*end_b_px)
+        px, py = self.table.to_arm(*pick_px)
+        across = np.rad2deg(np.arctan2(by - ay, bx - ax)) + 90.0     # square to the long side
+        radial = np.rad2deg(np.arctan2(py, px))
+        turn = (across - radial + 90.0) % 180.0 - 90.0               # jaws are symmetric: never turn more than 90
+        return float(radial + turn)
+
+    def pick_place(self, pick_px, place_px, drop: bool, tall: bool = False, long_side_px=None) -> bool:
         """Pick the item at `pick_px` and put it at `place_px` (camera pixels).
 
         drop=True releases from above (into a container; `tall` for a cup); drop=False sets it
-        down on the table. Returns True when the motion finished. Whether the item actually
+        down on the table. `long_side_px` is the two ends of the item's long side as the camera
+        sees them; with it the wrist turns so the jaws close across the narrow side. Returns True when the motion finished. Whether the item actually
         arrived is for the camera to check afterwards.
         """
         px, py = self.table.to_arm(*pick_px)
         qx, qy = self.table.to_arm(*place_px)
+        self.jaw_deg = self.jaw_across(pick_px, *long_side_px) if long_side_px else None
         closed = max(0.0, 22.0 - 22.0 * self.grip)
         self.set_gripper(GRIP_OPEN, wait=0.2)
         self.move_xyz(px, py, ABOVE_TABLE_HOVER)
         self.move_height(ABOVE_TABLE_GRASP)
         self.set_gripper(closed)
         self.move_height(ABOVE_TABLE_HOVER)
+        self.jaw_deg = None                      # carry and release with the wrist relaxed
         if drop:
             self.move_xyz(qx, qy, ABOVE_TABLE_DROP if tall else ABOVE_TABLE_LOW_DROP)
         else:

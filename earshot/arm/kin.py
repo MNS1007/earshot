@@ -74,10 +74,15 @@ def _down_rotation() -> np.ndarray:
     return _rot_y(90.0) @ fk(np.zeros(len(config.ARM_JOINTS)))[:3, :3]
 
 
-def down_pose(x: float, y: float, z: float) -> np.ndarray:
-    """Target pose: fingertips at (x, y, z), pointing down, turned toward the point."""
+def down_pose(x: float, y: float, z: float, jaw_deg: float | None = None) -> np.ndarray:
+    """Target pose: fingertips at (x, y, z), pointing down.
+
+    The jaws close along one line on the table. `jaw_deg` is that line's direction in the
+    arm's frame (0 = along x, straight out from the base). None means "toward the base",
+    which needs no wrist turn.
+    """
     T = np.eye(4)
-    T[:3, :3] = _rot_z(np.rad2deg(np.arctan2(y, x))) @ _down_rotation()
+    T[:3, :3] = _rot_z(np.rad2deg(np.arctan2(y, x)) if jaw_deg is None else jaw_deg) @ _down_rotation()
     T[:3, 3] = (x, y, z)
     return T
 
@@ -96,7 +101,8 @@ def _solve(target: np.ndarray, seed_deg: np.ndarray, down_weight: float, iters: 
     return q, float(np.linalg.norm(T[:3, 3] - target[:3, 3])), tilt_from_down_deg(T)
 
 
-def ik_down(x: float, y: float, z: float, seed_deg=None, iters: int = 120, max_err_m: float = 0.004):
+def ik_down(x: float, y: float, z: float, seed_deg=None, iters: int = 120, max_err_m: float = 0.004,
+            jaw_deg: float | None = None):
     """Joint angles that put the fingertips at (x, y, z), pointing as nearly down as the arm can.
 
     Position comes first. The solver is run from several starting poses and with the "point
@@ -110,7 +116,7 @@ def ik_down(x: float, y: float, z: float, seed_deg=None, iters: int = 120, max_e
     lim = joint_limits_deg()
     seeds = [] if seed_deg is None else [np.asarray(seed_deg, dtype=float)]
     seeds += [np.array([pan, a, b, c, 0.0]) for a, b, c in ((-20, 40, 50), (20, 0, 55), (45, -40, 40), (-45, 75, 35))]
-    target = down_pose(x, y, z)
+    target = down_pose(x, y, z, jaw_deg)
     best = None
     for seed in seeds:
         for weight in (0.2, 0.02, 0.0):
