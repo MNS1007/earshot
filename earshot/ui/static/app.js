@@ -26,7 +26,7 @@
   };
   var SILENT = { transcript: 1, nothing: 1 };
   var CORRECTING = { swap_steps: 1, move_step: 1, change_destination: 1, set_grip: 1, set_speed: 1, retry_last: 1, skip_step: 1 };
-  var KIND_GLYPH = { heard: "g-ear", correction: "g-ear", seen: "g-eye", check: "g-eye", robot: "g-arm", error: "g-warn" };
+  var KIND_GLYPH = { heard: "g-ear", correction: "g-ear", seen: "g-eye", check: "g-eye" };
   var MAX_EVENTS = 5;
   var FROM_RULE = "Not in the demonstration";
   var DISAGREE = "Picture and words disagreed. Following the picture.";
@@ -55,6 +55,32 @@
   }
   function cap(s) { s = String(s || "").trim(); return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
   function stop(s) { s = String(s || "").trim(); return /[.!?]$/.test(s) ? s : s + "."; }
+
+  // "the block is pink" + "white paper bowl" reads as "Pink blocks go to the white paper bowl."
+  // Anything that does not fit a pattern is shown as "{when}: {destination}."
+  var PLACED = /^(on|in|into|inside|onto|at|by|near|beside|between|under|behind|above|below|next to|in front of|left of|right of|to the)\b/i;
+  function plural(noun) { return /s$/i.test(noun) ? noun : noun + "s"; }
+  function ruleSentence(r) {
+    var when = String(r.when || "").trim().replace(/[.:]$/, "");
+    var dest = String(r.destination || "").trim().replace(/\.$/, "");
+    var subject = "";
+    var m = /^(?:when |if )?the ([a-z-]+) is (.+)$/i.exec(when);
+    if (m) {
+      var q = m[2];
+      if (/^(another|a different|any other|some other)\b/i.test(q)) subject = plural(m[1]) + " of " + q;
+      else if (!/^(not|in|on|at|a|an|the|bigger|smaller|larger)\b/i.test(q) && q.split(/\s+/).length <= 3) subject = q + " " + plural(m[1]);
+    } else if (/^[a-z -]+s$/i.test(when) && when.split(/\s+/).length <= 4 && !/\b(is|are|go|goes|has|have)\b/i.test(when)) {
+      subject = when;
+    }
+    if (!subject || !dest) return stop(cap(when) + (dest ? ": " + dest : ""));
+    var goes = PLACED.test(dest) ? " go " : /^(the|a|an|my|your|this|that)\b/i.test(dest) ? " go to " : " go to the ";
+    return cap(subject) + goes + dest + ".";
+  }
+  // "Pink block to white bowl"; a destination that already says where reads without the "to".
+  function stepTitle(st) {
+    var dest = String(st.destination || "").trim();
+    return cap(st.item) + (dest ? (PLACED.test(dest) ? " " : " to ") + dest : "");
+  }
   function setText(node, text) { if (node.textContent !== text) node.textContent = text; }
   function setHidden(node, hide) { if (node.hidden !== hide) node.hidden = hide; }
 
@@ -104,7 +130,8 @@
           else row.text = cap(c.effect);
         }
       } else if (e.kind === "check") {
-        if (/not right|cannot see|still on the table|closed on nothing|disagree/i.test(text)) row.miss = true;
+        if (/disagree/i.test(text)) row.look = true;
+        else if (/not right|cannot see|still on the table|closed on nothing/i.test(text)) row.miss = true;
       }
       out.push(row);
     }
@@ -186,8 +213,8 @@
       var sub = MODES[mode].sub;
       if (mode === "idle" && task) sub = "Say “help me” or “your turn”";
       if (mode === "paused" && WAS[from]) sub = "Arm stopped. I was " + WAS[from];
-      setText($("mode-label"), MODES[mode].label);
-      setText($("mode-sub"), sub);
+      setText($("mode-label"), stop(MODES[mode].label));
+      setText($("mode-sub"), stop(sub));
 
       var stage = mode === "paused" ? from : mode;
       var at = STAGES.indexOf(stage);
@@ -228,9 +255,9 @@
 
   // ---- the instruction sheet
 
-  var stepNodes = [];                  // one per step, in order: { li, mark, fault, status, markKey }
+  var stepNodes = [];                  // one per step, in order: { n, li, num, mark, fault, status, markKey }
   var density = 0;                     // 0 roomy ... 3 tightest
-  var DENSITIES = ["steps", "steps snug", "steps tight open", "steps tight"];
+  var DENSITIES = ["steps", "steps snug", "steps snug tight open", "steps snug tight"];
 
   function drawSheet(mode, task, evs) {
     var steps = (task && task.steps) || [];
@@ -261,17 +288,13 @@
 
     var rs = (task && task.rules) || [];
     if (changed("rules", rs)) {
-      var rules = $("rules");
+      var rules = $("rules-list");
       rules.textContent = "";
-      setHidden(rules, rs.length === 0);
+      setHidden($("rules"), rs.length === 0);
       rs.forEach(function (r) {
-        var d = el("div", "rule-line");
-        d.appendChild(el("span", "k", "Rule"));
-        d.appendChild(el("span", "txt", cap(r.when)));
-        d.appendChild(glyph("g-to", "to"));
-        d.appendChild(el("span", "sr", " go to "));
-        d.appendChild(el("span", "txt", r.destination));
-        rules.appendChild(d);
+        var line = el("li", null, ruleSentence(r));
+        line.title = line.textContent;
+        rules.appendChild(line);
       });
     }
 
@@ -306,7 +329,8 @@
         var was = node.status;
         node.markKey = markKey;
         node.status = status;
-        node.li.className = "step " + status + (status === "done" && was && was !== "done" && !rebuilt ? " just" : "");
+        node.li.className = "step " + status + (status === "doing" && reason ? " again" : "") +
+          (status === "done" && was && was !== "done" && !rebuilt ? " just" : "");
         drawMark(node, status, reason);
         touched = true;
       }
@@ -323,12 +347,10 @@
     list.textContent = "";
     stepNodes = steps.map(function (st) {
       var li = el("li", "step todo");
-      li.appendChild(el("div", "num", String(st.n)));
-      var what = el("div", "what");
-      what.appendChild(el("span", "item", cap(st.item)));
-      what.appendChild(glyph("g-to", "to"));
-      what.appendChild(el("span", "sr", " goes to "));
-      what.appendChild(el("span", "dest", st.destination));
+      var num = el("div", "num", String(st.n));
+      li.appendChild(num);
+      var what = el("div", "what", stepTitle(st));
+      what.title = what.textContent;
       li.appendChild(what);
       var mark = el("div", "mark");
       li.appendChild(mark);
@@ -347,19 +369,14 @@
       li.appendChild(pair);
 
       if (st.agrees === false) {
-        var d = el("div", "note");
-        d.appendChild(glyph("g-warn"));
-        d.appendChild(el("span", null, DISAGREE));
-        li.appendChild(d);
+        li.appendChild(el("div", "note look", DISAGREE));
       }
       var fault = el("div", "note");
       fault.hidden = true;
-      fault.appendChild(glyph("g-cross"));
-      fault.appendChild(el("span"));
       li.appendChild(fault);
 
       list.appendChild(li);
-      return { li: li, mark: mark, fault: fault, status: null, markKey: null };
+      return { n: st.n, li: li, num: num, mark: mark, fault: fault, status: null, markKey: null };
     });
     density = 0;
   }
@@ -373,9 +390,10 @@
   }
 
   function drawMark(node, status, reason) {
-    var mark = node.mark;
+    var mark = node.mark, num = node.num;
     mark.textContent = "";
-    if (status === "done") {
+    num.textContent = "";
+    if (status === "done") {                       // a small check takes the place of the number
       var s = document.createElementNS(SVG, "svg");
       s.setAttribute("viewBox", "0 0 24 24");
       s.setAttribute("aria-hidden", "true");
@@ -384,17 +402,19 @@
       p.setAttribute("d", "M4 12.5l5.5 5.5L20 6.5");
       p.setAttribute("pathLength", "1");
       s.appendChild(p);
-      mark.appendChild(s);
-      mark.appendChild(el("span", "sr", "Done"));
-    } else if (status === "failed") {
-      mark.appendChild(el("span", null, "Did not work"));
-    } else if (status === "doing") {
-      mark.appendChild(el("span", null, reason ? "Second try" : "Now"));
+      num.appendChild(s);
+      num.appendChild(el("span", "sr", "Step " + node.n + ", done"));
+    } else {
+      num.textContent = String(node.n);
     }
+    if (status === "failed") { mark.appendChild(glyph("g-cross")); mark.appendChild(el("span", null, "Did not work")); }
+    else if (status === "doing") mark.textContent = reason ? "Second try" : "Now";
     var text = "";
     if (status === "failed") text = reason ? "Check failed: " + stop(reason) : "The camera check failed.";
     if (status === "doing" && reason) text = "First try missed: " + stop(reason) + " Trying again.";
-    node.fault.lastChild.textContent = text;
+    node.fault.className = "note " + (status === "failed" ? "fault" : "look");
+    node.fault.textContent = text;
+    node.fault.title = text;
     setHidden(node.fault, !text);
   }
 
@@ -408,6 +428,7 @@
       density++;
       list.className = DENSITIES[density];
     }
+    list.classList.toggle("jump", !!fresh);
     if (current) {
       var top = current.li.offsetTop, h = current.li.offsetHeight;
       var room = wrap.clientHeight;
@@ -419,7 +440,9 @@
       tape.style.height = h + "px";
       tape.style.transform = "translateY(" + (top - want) + "px)";
       if (jump) { void tape.offsetHeight; tape.classList.remove("jump"); }
+      if (fresh) { void list.offsetHeight; list.classList.remove("jump"); }
     } else {
+      list.classList.remove("jump");
       tape.hidden = true;
       if (list.offsetHeight <= wrap.clientHeight) list.style.transform = "";
     }
@@ -451,9 +474,11 @@
     var ul = $("events");
     ul.textContent = "";
     rows.forEach(function (row) {
-      var li = el("li", row.kind + (row.miss ? " miss" : ""));
+      var li = el("li", row.kind + (row.miss ? " miss" : "") + (row.look ? " look" : ""));
       li.appendChild(el("span", "t", clock(row.t, true)));
-      li.appendChild(glyph(KIND_GLYPH[row.kind] || "g-arm"));
+      var slot = el("span", "slot");                 // only what was seen or heard carries a glyph
+      if (KIND_GLYPH[row.kind]) slot.appendChild(glyph(KIND_GLYPH[row.kind]));
+      li.appendChild(slot);
       li.appendChild(el("span", "txt", row.text));
       if (row.led) li.appendChild(el("span", "led", row.led));
       ul.appendChild(li);
@@ -525,7 +550,10 @@
     send("load_task", { query: q || "the last one" }, ev.target.querySelector("button"));
   });
 
-  window.addEventListener("resize", function () { if (lastState) { lastVersion = -1; draw(lastState); } });
+  function relayout() { if (lastState) { lastVersion = -1; draw(lastState); } }
+  window.addEventListener("resize", relayout);
+  window.addEventListener("load", relayout);
+  if (window.ResizeObserver) new ResizeObserver(relayout).observe($("steps-wrap"));   // the sheet's room changed
 
   connect();
   poll();
