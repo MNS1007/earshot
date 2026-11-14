@@ -54,14 +54,14 @@ def locate_marks(frame: np.ndarray) -> list[dict]:
 def refit(frame: np.ndarray) -> tuple[Table, int, float]:
     """A Table for the camera as it is now. Returns (table, marks used, median shift in pixels).
 
-    Falls back to the saved calibration when fewer than five marks can be found clearly.
+    Falls back to the saved calibration when fewer than four marks can be found clearly.
     """
     saved = json.loads(config.CALIB_FILE.read_text())
     base = Table.load()
     if not REF_FRAME.exists():
         return base, 0, 0.0
     found = [(m, old) for m, old in zip(locate_marks(frame), saved["marks"]) if m["score"] >= GOOD]
-    if len(found) < 5:
+    if len(found) < 4:
         return base, len(found), 0.0
     shift = float(np.median([np.hypot(m["pixel"][0] - o["pixel"][0], m["pixel"][1] - o["pixel"][1]) for m, o in found]))
     table = Table.fit([m["pixel"] for m, _ in found], [m["arm_xy"] for m, _ in found], saved["table_z"], saved["image_size"])

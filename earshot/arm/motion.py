@@ -6,6 +6,7 @@ Positions are given as camera pixels and converted with the saved calibration (t
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Optional
 
@@ -39,9 +40,12 @@ class Arm:
         self._at = (0.0, 0.0, ABOVE_TABLE_HOVER)
         self.last_lean = 0.0
         self.jaw_deg: Optional[float] = None    # direction the jaws close along; None = toward the base
+        self.abort = threading.Event()          # set from another thread to stop the current move
 
     # -- low level -------------------------------------------------------------------------
     def _send(self, q: np.ndarray, grip: float) -> None:
+        if self.abort.is_set():
+            raise Stopped("stopped")
         action = {f"{j}.pos": float(v) for j, v in zip(config.ARM_JOINTS, arm.to_motor(self.robot, q))}
         action[f"{arm.GRIPPER}.pos"] = float(grip)
         self.robot.send_action(action)
@@ -142,7 +146,7 @@ class Arm:
         from earshot.arm import drift
 
         table, used, shift = drift.refit(frame)
-        if used >= 5:
+        if used >= 4:
             self.table = table
             return f"camera checked against {used} marks (moved {shift:.0f} px since calibration)"
         return f"camera check skipped: only {used} marks visible, using the saved calibration"
@@ -273,13 +277,31 @@ class Arm:
         """After closing: a gripper that stopped short of its target is holding an item."""
         return arm.read_gripper(self.robot) > max(0.0, 22.0 - 22.0 * self.grip) + 4.0
 
+    def back_off(self) -> None:
+        """After a stop: let go of anything held, lift clear, and return to rest."""
+        self.abort.clear()
+        self.jaw_deg = None
+        self.set_gripper(GRIP_OPEN, wait=0.1)
+        x, y, _ = self._at
+        if x or y:
+            try:
+                self.move_xyz(x, y, ABOVE_TABLE_HOVER)
+            except ReachError:
+                pass
+        self.go_home()
+
     def close(self) -> None:
         """Return to rest and switch the motors off. Support the arm if it is not resting."""
+        self.abort.clear()
         try:
             self.go_home()
             self.set_gripper(self.home_grip, wait=0.2)
         finally:
             arm.close(self.robot, limp=True)
+
+
+class Stopped(RuntimeError):
+    """The move was stopped from outside (pause, retry, or shutting down)."""
 
 
 class ReachError(RuntimeError):
