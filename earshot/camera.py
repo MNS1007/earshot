@@ -32,10 +32,11 @@ class Camera:
 
     def start(self) -> "Camera":
         """Start streaming; returns once the first frame has arrived."""
-        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "avfoundation", "-framerate", "30",
+        cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-f", "avfoundation", "-framerate", "30",
                "-video_size", f"{self.size[0]}x{self.size[1]}", "-i", f"{self.name}:none",
                "-r", str(self.fps), "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "3", "-"]
-        self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        # stdin is closed off: otherwise ffmpeg swallows the keys typed at the terminal
+        self._proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         threading.Thread(target=self._read, daemon=True).start()
         deadline = time.time() + 8
         while self._jpeg is None and time.time() < deadline:
