@@ -57,6 +57,7 @@ class Arm:
         self.abort = threading.Event()          # set from another thread to stop the current move
         self._closed = 5.0                      # the gripper setting last used to close on an item
         self.on_stage = None                    # optional callback(name) at each stage of a pick, for recording
+        self.look_if_holding = None             # optional callback() -> True/False/None: a camera look after lifting
 
     # -- low level -------------------------------------------------------------------------
     def _send(self, q: np.ndarray, grip: float) -> None:
@@ -349,7 +350,11 @@ class Arm:
         self.jaw_deg = None                      # lifting does not need the wrist held at an angle
         self.move_height(ABOVE_TABLE_HOVER)
         self._stage(f"5 lifted, gripper reads {arm.read_gripper(self.robot):.0f}")
-        if not self.holding_something():         # the fingers met: nothing is between them
+        held = self.look_if_holding() if self.look_if_holding else None
+        if held is None:                         # no camera check available: go by the gripper's own reading
+            held = self.holding_something()
+        self._stage(f"5b holding check says {'holding' if held else 'empty'}")
+        if not held:
             self.jaw_deg = None
             self.set_gripper(GRIP_OPEN, wait=0.2)
             self.go_home()

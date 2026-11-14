@@ -224,6 +224,8 @@ class Earshot:
             pick_px = (grasp["x"], grasp["y"])
             state.pick_attempted()
             state.robot(f"Step {step.n}: {step.item} to {step.destination}" + (" (second try)" if attempt == 2 else ""))
+            if self.arm:
+                self.arm.look_if_holding = lambda item=step.item: self._look_if_holding(item)
             held = self._move(pick_px, place_px, drop, tall=any(t in step.destination.lower() for t in TALL),
                               long_side=grasp["long_side"], outline=grasp.get("outline"))
             if self.redo:
@@ -239,6 +241,15 @@ class Earshot:
                 state.pick_retried()
             attempt += 1
         return False
+
+    def _look_if_holding(self, item: str) -> Optional[bool]:
+        """After the arm lifts: a camera look to see whether the item came up with it."""
+        try:
+            r = point.is_holding(self.cam.fresh_frame(), item)
+        except Exception:
+            return None                               # fall back to the gripper's own reading
+        state.check(f"After lifting, the camera sees the {item} {'in the gripper' if r['holding'] else 'still on the table'}: {r['reason']}")
+        return r["holding"]
 
     def _destination_px(self, step: Step, frame) -> Optional[tuple[float, float]]:
         """Where the step's item should end up, as a camera pixel on the table."""

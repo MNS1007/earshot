@@ -94,6 +94,18 @@ try:
         cv2.imwrite(str(shots / f"{stage.split(',')[0].replace(' ', '_')}.jpg"), cam.fresh_frame())
 
     bot.on_stage = record
+
+    def look() -> bool | None:
+        """After lifting: ask the vision model whether the item is in the gripper."""
+        try:
+            r = point.is_holding(cam.fresh_frame(), args.item)
+        except Exception as e:
+            print("  holding look failed, using the gripper reading:", e)
+            return None
+        print(f"  camera says {'holding' if r['holding'] else 'not holding'}: {r['reason']}")
+        return r["holding"]
+
+    bot.look_if_holding = look
     input("Press Enter to move, Ctrl+C to cancel...")
     held = bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall, long_side_px=long_side,
                           outline_px=outline)

@@ -254,3 +254,27 @@ def draw(image: np.ndarray | str | Path, points: list[dict]) -> np.ndarray:
         cv2.putText(canvas, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.6 * size, (255, 255, 255), thick + 2, cv2.LINE_AA)
         cv2.putText(canvas, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.6 * size, (0, 0, 255), thick, cv2.LINE_AA)
     return canvas
+
+
+HOLDING_SCHEMA = {
+    "type": "object",
+    "properties": {"reason": {"type": "string"}, "holding": {"type": "boolean"}},
+    "required": ["reason", "holding"],
+}
+
+
+def is_holding(image: np.ndarray | str | Path, item: str, model: str = config.POINT_MODEL) -> dict:
+    """Look at the picture and say whether the robot's gripper has lifted the item off the table.
+
+    Returns {"holding": bool, "reason": str}. Used right after the arm lifts, before it
+    carries anything: a look is a more general test than the gripper's own position reading,
+    which cannot tell a thin item from nothing.
+    """
+    image_bgr = load(image)
+    prompt = (
+        f"A robot arm has just closed its gripper and lifted. Is the {item} now held in the gripper, "
+        "off the table? Answer holding=false if it is still resting on the table or on another object, "
+        "even if the gripper is touching it. Give a short reason first."
+    )
+    answer = gemini.generate(model, [_image_part(image_bgr), {"text": prompt}], HOLDING_SCHEMA, temperature=0.0, thinking=THINKING)
+    return {"holding": bool(answer.get("holding")), "reason": str(answer.get("reason", ""))}
