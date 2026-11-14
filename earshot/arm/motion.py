@@ -30,6 +30,8 @@ TIP_ALONG = 0.0045
 TIP_LEFT = 0.017
 CLEARANCE = 0.012            # spare room each side of the item between the open fingertips
 GRIP_DEPTH = 0.016           # how far behind the item's near edge the jaws close (half the depth of a small item)
+GRIP_DEPTH_MAX = 0.03        # deepest the jaws close behind the near edge
+NARROW_FACE = 0.045          # an item narrower than this across the view is taken to be end-on to the camera
 MAX_GAP = 0.095              # widest fingertip gap at which the swinging jaw still closes near the table
 RAKE_STEP_BACK = 0.015       # how far to step back when the fixed jaw comes down on top of the item
 ON_TABLE = 0.014             # a fingertip measured lower than this is on the table, not on an item
@@ -262,7 +264,11 @@ class Arm:
             return None
         mid_across = float((across.max() + across.min()) / 2.0)
         near = float(np.percentile(depth[np.abs(across - mid_across) < max(0.004, 0.2 * width)], 10))
-        middle = left * mid_across + away * (near + GRIP_DEPTH)
+        # How far in from the near edge to close. The far side cannot be seen, so this is a
+        # judgement: an item showing its narrow face runs away from the camera at least as far
+        # as it is wide, so grip one width in; a wide item is gripped just behind its front.
+        depth_in = min(width, GRIP_DEPTH_MAX) if width < NARROW_FACE else GRIP_DEPTH
+        middle = left * mid_across + away * (near + depth_in)
         best = None
         for vec in (left, -left):                 # the gap can open to either side: take the easier wrist turn
             fixed = middle - vec * gap / 2.0
