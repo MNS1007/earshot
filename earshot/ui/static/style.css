@@ -1,0 +1,199 @@
+/* Earshot live screen. One page, no scrolling, readable from three metres.
+   Every size is in rem and the root size follows the window, so 1280x720 and a
+   1920x1080 projector show exactly the same layout, just larger. */
+
+:root {
+  --ink: #111111;
+  --muted: #4d4d4d;
+  --line: #c4c4c4;
+  --soft: #f1f1f1;
+  --bg: #ffffff;
+
+  --teaching: #b3261e;      /* red: recording you */
+  --understanding: #8a5a00; /* amber: thinking */
+  --helping: #0b57d0;       /* blue: working with you */
+  --doing: #146c2e;         /* green: working alone */
+  --paused: #111111;
+  --idle: #5f6368;
+
+  --heard: #6a1b9a;
+  --seen: #00695c;
+  --robot: #0b57d0;
+  --check: #146c2e;
+  --correction: #8a5a00;
+  --error: #b3261e;
+  --warn-bg: #fff1c2;
+
+  --mode: var(--idle);
+}
+body[data-mode="teaching"] { --mode: var(--teaching); }
+body[data-mode="understanding"] { --mode: var(--understanding); }
+body[data-mode="helping"] { --mode: var(--helping); }
+body[data-mode="doing"] { --mode: var(--doing); }
+body[data-mode="paused"] { --mode: var(--paused); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: clamp(11px, min(2.22vh, 1.25vw), 40px); }
+body {
+  height: 100vh; overflow: hidden;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--ink);
+  font-family: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  line-height: 1.25;
+}
+ol, ul { list-style: none; }
+
+.label {
+  font-size: .78rem; font-weight: 700; letter-spacing: .08em; color: var(--muted);
+  margin-bottom: .25rem;
+}
+.label .hint { font-weight: 400; letter-spacing: 0; }
+
+/* ------------------------------------------------------------------ header */
+header {
+  flex: 0 0 3rem; display: flex; align-items: center; gap: 1.2rem;
+  padding: 0 .9rem; border-bottom: 2px solid var(--ink);
+}
+.brand { font-weight: 800; letter-spacing: .14em; font-size: 1.05rem; }
+.taskname { font-size: 1.05rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; min-width: 0; }
+.taskname .dim { font-weight: 400; color: var(--muted); }
+.stages { display: flex; gap: .3rem; flex: 0 0 auto; }
+.stages li {
+  font-size: .85rem; padding: .28rem .6rem; border: 2px solid var(--line); color: var(--muted);
+  border-radius: .3rem; white-space: nowrap;
+}
+.stages li b { margin-right: .25rem; }
+.stages li.past { border-color: var(--ink); color: var(--ink); }
+.stages li.now { background: var(--mode); border-color: var(--mode); color: #fff; font-weight: 700; }
+.conn { flex: 0 0 auto; font-size: .78rem; font-weight: 700; letter-spacing: .06em; color: var(--muted); }
+.conn.ok { color: var(--check); }
+.conn.bad { color: #fff; background: var(--error); padding: .2rem .5rem; border-radius: .2rem; }
+
+/* ------------------------------------------------------------------ columns */
+main {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: 31fr 44fr 25fr; gap: .9rem;
+  padding: .6rem .9rem .7rem;
+}
+.col { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+
+/* ------------------------------------------------------------------ left: mode, camera, buttons */
+.banner { background: var(--mode); color: #fff; padding: .45rem .8rem .5rem; border-radius: .35rem .35rem 0 0; }
+.banner-mode { font-size: 2.15rem; font-weight: 800; letter-spacing: .02em; line-height: 1.1; white-space: nowrap; }
+.banner-sub { font-size: .95rem; margin-top: .1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.camera {
+  aspect-ratio: 16 / 9; width: 100%; flex: 0 1 auto; min-height: 0;
+  background: #e8e8e8; border: .25rem solid var(--mode); border-top: 0; border-radius: 0 0 .35rem .35rem;
+  overflow: hidden;
+}
+.camera img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.robot { display: flex; align-items: baseline; gap: .6rem; margin-top: .5rem; min-height: 3rem; }
+.robot .label { margin: 0; }
+.robot-text { font-size: 1.2rem; font-weight: 600; line-height: 1.2; max-height: 3.6em; overflow: hidden; }
+
+.buttons { margin-top: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: .35rem; padding-top: .5rem; }
+button {
+  font: inherit; font-size: .9rem; font-weight: 600; color: var(--ink);
+  background: #fff; border: 2px solid var(--ink); border-radius: .3rem; padding: .38rem .3rem; cursor: pointer;
+}
+button:hover { background: var(--soft); }
+button:active, button.sent { background: var(--ink); color: #fff; }
+button.failed { border-color: var(--error); color: var(--error); }
+.load { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; gap: .35rem; }
+.load input {
+  font: inherit; font-size: .9rem; padding: .35rem .5rem; min-width: 0;
+  border: 2px solid var(--line); border-radius: .3rem; color: var(--ink); background: #fff;
+}
+.load input:focus { outline: none; border-color: var(--ink); }
+.load button { padding-left: .8rem; padding-right: .8rem; }
+
+/* ------------------------------------------------------------------ centre: rules, steps, corrections */
+.rules { margin-bottom: .45rem; display: flex; flex-wrap: wrap; gap: .3rem .5rem; }
+.rule {
+  font-size: 1.05rem; font-weight: 600; padding: .22rem .6rem;
+  border: 2px solid var(--ink); border-radius: .3rem; background: var(--soft);
+}
+.rule .k { font-weight: 800; letter-spacing: .06em; font-size: .78rem; margin-right: .45rem; color: var(--muted); }
+.arrow { margin: 0 .4em; font-weight: 400; }
+
+.steps { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .28rem; }
+.steps .empty { font-size: 1.2rem; color: var(--muted); padding: 1rem .2rem; }
+.step {
+  display: grid; grid-template-columns: 2.3rem 1fr auto; column-gap: .6rem; align-items: start;
+  padding: .28rem .55rem .3rem .45rem;
+  border: 2px solid var(--line); border-left-width: .45rem; border-radius: .3rem;
+}
+.step .num {
+  width: 2.1rem; height: 2.1rem; border-radius: 50%; border: 2px solid var(--muted); color: var(--muted);
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem; font-weight: 800; margin-top: .1rem;
+}
+.step .body { min-width: 0; }
+.step .what { font-size: 1.18rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step .ev { font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #2b2b2b; }
+.step .ev .k { font-weight: 700; margin-right: .3em; }
+.step .ev.seen .k { color: var(--seen); }
+.step .ev.heard .k { color: var(--heard); }
+.step .ev.none { color: #767676; }
+.step .tag {
+  font-size: .78rem; font-weight: 800; letter-spacing: .07em; padding: .16rem .45rem; border-radius: .2rem;
+  border: 2px solid var(--line); color: var(--muted); margin-top: .2rem; white-space: nowrap;
+}
+.step .flag {
+  grid-column: 2 / -1; margin-top: .18rem; font-size: .85rem; font-weight: 700;
+  background: var(--warn-bg); border: 2px solid var(--correction); color: #3d2800;
+  border-radius: .2rem; padding: .08rem .45rem; justify-self: start;
+}
+.step .flag::before {
+  content: "!"; display: inline-block; width: 1.15em; height: 1.15em; line-height: 1.15em; text-align: center;
+  background: var(--correction); color: #fff; border-radius: 50%; margin-right: .4em; font-weight: 800;
+}
+.step.disagree { border-left-color: var(--correction); }
+
+.step.done { border-color: var(--line); border-left-color: var(--check); }
+.step.done .num { background: var(--check); border-color: var(--check); color: #fff; }
+.step.done .what { color: #3a3a3a; }
+.step.done .tag { border-color: var(--check); color: var(--check); }
+
+.step.doing { border-color: var(--mode); border-left-color: var(--mode); background: #f3f7ff; box-shadow: 0 0 0 2px var(--mode); margin: 2px; }
+.step.doing .num { background: var(--mode); border-color: var(--mode); color: #fff; }
+.step.doing .what { font-size: 1.34rem; }
+.step.doing .tag { background: var(--mode); border-color: var(--mode); color: #fff; }
+
+.step.failed { border-color: var(--error); border-left-color: var(--error); background: #fff3f2; }
+.step.failed .num { background: var(--error); border-color: var(--error); color: #fff; }
+.step.failed .tag { background: var(--error); border-color: var(--error); color: #fff; }
+
+.corrections { flex: 0 0 auto; margin-top: .45rem; border-top: 2px solid var(--ink); padding-top: .3rem; }
+.corrections ul { max-height: 4.2rem; overflow: hidden; }
+.corrections li { font-size: .98rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
+.corrections .t { font-weight: 700; font-variant-numeric: tabular-nums; margin-right: .5em; }
+.corrections .said { font-weight: 600; }
+.corrections .effect { color: var(--correction); font-weight: 700; }
+
+/* ------------------------------------------------------------------ right: transcript, counters, log */
+.transcript {
+  font-size: 1.45rem; font-weight: 600; line-height: 1.2; min-height: 5.6rem; max-height: 5.6rem; overflow: hidden;
+  border: 2px solid var(--heard); border-left-width: .45rem; border-radius: .3rem; padding: .4rem .6rem;
+  display: flex; align-items: center;
+}
+.transcript.quiet { color: #767676; font-weight: 400; border-color: var(--line); }
+.transcript.live::after { content: "…"; }
+.counters {
+  margin: .5rem 0 .55rem; font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: .3rem .6rem; background: var(--ink); color: #fff; border-radius: .3rem; white-space: nowrap;
+}
+.log { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: 2px solid var(--ink); }
+.log li {
+  display: grid; grid-template-columns: 3.9rem 1fr; column-gap: .45rem; align-items: baseline;
+  padding: .22rem 0; border-bottom: 1px solid #dcdcdc; font-size: .88rem;
+}
+.log .t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .78rem; }
+.log .k { font-weight: 800; font-size: .72rem; letter-spacing: .06em; margin-right: .4em; text-transform: uppercase; }
+.log .heard .k { color: var(--heard); }
+.log .seen .k { color: var(--seen); }
+.log .robot .k { color: var(--robot); }
+.log .check .k { color: var(--check); }
+.log .correction .k { color: var(--correction); }
+.log .error .k { color: #fff; background: var(--error); padding: 0 .3em; border-radius: .15rem; }
+.log li:first-child { font-weight: 600; }
+.log .txt { overflow-wrap: anywhere; }

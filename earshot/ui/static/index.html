@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earshot</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-mode="idle">
+
+<header>
+  <div class="brand">EARSHOT</div>
+  <div class="taskname" id="taskname">No task yet</div>
+  <ol class="stages" id="stages" aria-label="Where we are in the loop">
+    <li data-stage="teaching"><b>1</b> You show it once</li>
+    <li data-stage="understanding"><b>2</b> I work out the steps</li>
+    <li data-stage="helping"><b>3</b> I help you</li>
+    <li data-stage="doing"><b>4</b> I do it myself</li>
+  </ol>
+  <div class="conn" id="conn">CONNECTING</div>
+</header>
+
+<main>
+  <section class="col left">
+    <div class="banner" id="banner">
+      <div class="banner-mode" id="mode-label">READY</div>
+      <div class="banner-sub" id="mode-sub">Waiting for a task</div>
+    </div>
+    <div class="camera"><img id="frame" alt="Live camera view of the table"></div>
+    <div class="robot"><span class="label">ARM</span><span id="robot-status" class="robot-text">&nbsp;</span></div>
+    <div class="buttons" id="buttons">
+      <button data-action="start_teaching">Start teaching</button>
+      <button data-action="stop_teaching">Stop teaching</button>
+      <button data-action="help_me">Help me</button>
+      <button data-action="your_turn">Your turn</button>
+      <button data-action="pause">Pause</button>
+      <button data-action="resume">Resume</button>
+      <form id="load-form" class="load">
+        <input id="load-query" type="text" placeholder="the sorting one / at 10 / the last one" aria-label="Which saved task">
+        <button type="submit">Load task</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="col centre">
+    <div class="rules" id="rules" hidden></div>
+    <h2 class="label" id="steps-label">STEPS</h2>
+    <ol class="steps" id="steps"></ol>
+    <div class="corrections" id="corrections" hidden>
+      <h2 class="label">YOUR CORRECTIONS</h2>
+      <ul id="corrections-list"></ul>
+    </div>
+  </section>
+
+  <section class="col right">
+    <h2 class="label">HEARING NOW</h2>
+    <div class="transcript" id="transcript"></div>
+    <div class="counters" id="counters">0 of 0 picks, 0 retried</div>
+    <h2 class="label">WHAT JUST HAPPENED <span class="hint">newest first</span></h2>
+    <ul class="log" id="log"></ul>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
