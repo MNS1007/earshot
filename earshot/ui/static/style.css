@@ -65,9 +65,7 @@ i { font-style: normal; }
 
 .stages { display: flex; flex: 0 0 auto; align-items: center; align-self: center; line-height: 1.4; }
 .stages li { display: flex; align-items: center; white-space: nowrap; color: var(--ink-2); }
-.stages li + li::before {
-  content: ""; width: calc(var(--s) * 3); height: 1px; margin: 0 calc(var(--s) * 1.5); background: #C9CFCC;
-}
+.stages li + li { margin-left: calc(var(--s) * 4); }   /* plain space between stages: a rule here read as a dash */
 .stages .lab { padding: 4px 0; border-bottom: 2px solid transparent; }
 .stages b { margin-right: .5em; }
 .stages li.now .lab { color: var(--ink); font-weight: 500; border-bottom-color: var(--accent); }
