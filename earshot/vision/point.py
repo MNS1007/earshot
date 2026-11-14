@@ -115,6 +115,41 @@ def point_at(image: np.ndarray | str | Path, descriptions: list[str],
     return [found[i] for i in sorted(found)]
 
 
+AXIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "elongated": {"type": "boolean", "description": "false if the object is about as wide as it is long"},
+        "centre": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+        "end_a": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+        "end_b": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+    },
+    "required": ["elongated", "centre", "end_a", "end_b"],
+}
+
+
+def grasp_of(image: np.ndarray | str | Path, description: str, model: str = config.POINT_MODEL) -> dict | None:
+    """Where to grip one object and which way it lies.
+
+    Returns {"x", "y", "long_side": ((ax, ay), (bx, by)) or None} in pixels, or None when the
+    object is not in the picture. `long_side` is the two ends of the object's longer side where
+    it rests on the surface; None for objects with no clear longer side.
+    """
+    image_bgr = load(image)
+    prompt = (
+        f"Find this object in the image: {description}.\n"
+        "Give `centre`: the middle of the part of it that rests on the surface. "
+        "Give `end_a` and `end_b`: the two ends of its longer side, on the surface, measured along the object "
+        "itself and not along the image. Set `elongated` to false if it is about as wide as it is long. "
+        "If the object is not in the image, answer with all points [0, 0]. " + BASE_POINT
+    )
+    a = gemini.generate(model, [_image_part(image_bgr), {"text": prompt}], AXIS_SCHEMA, temperature=0.0, thinking=THINKING)
+    centre, end_a, end_b = (_to_pixels(a.get(k), image_bgr) for k in ("centre", "end_a", "end_b"))
+    if not centre or list(a.get("centre", [0, 0])) == [0, 0]:
+        return None
+    long_side = (end_a, end_b) if a.get("elongated") and end_a and end_b and end_a != end_b else None
+    return {"x": centre[0], "y": centre[1], "long_side": long_side}
+
+
 def list_items(image: np.ndarray | str | Path, model: str = config.POINT_MODEL) -> list[dict]:
     """List every loose object a small gripper could pick up.
 
