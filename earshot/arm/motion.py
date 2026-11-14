@@ -138,7 +138,8 @@ class Arm:
 
         drop=True releases from above (into a container; `tall` for a cup); drop=False sets it
         down on the table. `long_side_px` is the two ends of the item's long side as the camera
-        sees them; with it the wrist turns so the jaws close across the narrow side. Returns True when the motion finished. Whether the item actually
+        sees them; with it the wrist turns so the jaws close across the narrow side.
+        Returns False, without going to the destination, when the gripper closed on nothing. Returns True when the motion finished. Whether the item actually
         arrived is for the camera to check afterwards.
         """
         px, py = self.table.to_arm(*pick_px)
@@ -150,6 +151,11 @@ class Arm:
         self.move_height(ABOVE_TABLE_GRASP)
         self.set_gripper(closed)
         self.move_height(ABOVE_TABLE_HOVER)
+        if not self.holding_something():         # the fingers met: nothing is between them
+            self.jaw_deg = None
+            self.set_gripper(GRIP_OPEN, wait=0.2)
+            self.go_home()
+            return False
         self.jaw_deg = None                      # carry and release with the wrist relaxed
         if drop:
             self.move_xyz(qx, qy, ABOVE_TABLE_DROP if tall else ABOVE_TABLE_LOW_DROP)

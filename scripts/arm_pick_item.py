@@ -57,7 +57,8 @@ try:
         print("no clear long side: the jaws close toward the base")
     print(f"picture with both points: {config.DATA / 'last_pick.jpg'}")
     input("Press Enter to move, Ctrl+C to cancel...")
-    bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall, long_side_px=long_side)
+    held = bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall, long_side_px=long_side)
+    print("gripper felt the item: carried it" if held else "gripper closed on nothing: missed")
     if args.check:
         r = point.check_placed(cam.fresh_frame(), args.item, args.to or "the table near the front edge")
         print("camera check:", r)

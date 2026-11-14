@@ -149,12 +149,13 @@ class Earshot:
         hits = point.point_at(self.cam.fresh_frame(), [what])
         return (hits[0]["x"], hits[0]["y"]) if hits else None
 
-    def _move(self, pick_px, place_px, drop: bool, tall: bool = False, long_side=None) -> None:
+    def _move(self, pick_px, place_px, drop: bool, tall: bool = False, long_side=None) -> bool:
+        """False when the gripper closed on nothing."""
         if self.arm:
-            self.arm.pick_place(pick_px, place_px, drop=drop, tall=tall, long_side_px=long_side)
-        else:
-            state.robot(f"(no arm) would move {tuple(round(v) for v in pick_px)} to {tuple(round(v) for v in place_px)}")
-            time.sleep(1.0)
+            return self.arm.pick_place(pick_px, place_px, drop=drop, tall=tall, long_side_px=long_side)
+        state.robot(f"(no arm) would move {tuple(round(v) for v in pick_px)} to {tuple(round(v) for v in place_px)}")
+        time.sleep(1.0)
+        return True
 
     def _do_step(self, step: Step, place_px, drop: bool, verify) -> bool:
         """Pick the step's item and put it at place_px; check with the camera; retry once."""
@@ -168,9 +169,9 @@ class Earshot:
             pick_px = (grasp["x"], grasp["y"])
             state.pick_attempted()
             state.robot(f"Step {step.n}: {step.item} to {step.destination}" + (" (second try)" if attempt == 2 else ""))
-            self._move(pick_px, place_px, drop, tall=any(t in step.destination.lower() for t in TALL),
-                       long_side=grasp["long_side"])
-            ok, why = verify()
+            held = self._move(pick_px, place_px, drop, tall=any(t in step.destination.lower() for t in TALL),
+                              long_side=grasp["long_side"])
+            ok, why = verify() if held else (False, "the gripper closed on nothing; looking again")
             if ok:
                 state.pick_succeeded()
                 state.check(f"Step {step.n} checked: {why}")
