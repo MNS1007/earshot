@@ -198,7 +198,8 @@ async def api_voice(request: Request) -> JSONResponse:
     if err:
         return err
     item = put_action(body["action"], body["args"], body["said"], source="voice")
-    state.heard(f"“{item['said']}” → {item['action']}" if item["said"] else f"→ {item['action']}")
+    if item["action"] not in ("transcript", "nothing"):   # the main loop shows the words; no event for an echo
+        state.heard(f"“{item['said']}” → {item['action']}" if item["said"] else f"→ {item['action']}")
     return JSONResponse({"ok": True, "queued": item})
 
 
