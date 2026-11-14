@@ -18,6 +18,7 @@ import numpy as np
 from earshot import config
 from earshot.arm import kin, robot as arm
 from earshot.arm.table import Table, leave_one_out_mm
+from earshot.arm import drift
 from earshot.camera import Camera
 
 ap = argparse.ArgumentParser()
@@ -92,6 +93,7 @@ if loo:
           f"  worst {max(loo):.1f}")
 marks = [{"pixel": list(c), "arm_xy": list(a), "z": t[2], "joints": j} for c, a, t, j in zip(clicks, arm_xy, tips, joints)]
 table.save(marks)
+drift.save_reference(img)          # so a nudged camera can be corrected automatically later
 out = config.DATA / "calibration.jpg"
 view = img.copy()
 for n, (u, v) in enumerate(clicks, 1):

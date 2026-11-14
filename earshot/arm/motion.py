@@ -108,6 +108,16 @@ class Arm:
         self._at = (x, y, above_table)
         return self.last_lean
 
+    def follow_camera(self, frame) -> str:
+        """Re-find the calibration marks in `frame` and correct for a nudged camera. Returns a short report."""
+        from earshot.arm import drift
+
+        table, used, shift = drift.refit(frame)
+        if used >= 5:
+            self.table = table
+            return f"camera checked against {used} marks (moved {shift:.0f} px since calibration)"
+        return f"camera check skipped: only {used} marks visible, using the saved calibration"
+
     def go_home(self) -> None:
         self.move_joints(self.home)
 

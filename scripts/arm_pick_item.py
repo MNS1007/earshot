@@ -30,6 +30,7 @@ bot = motion.Arm(speed=args.speed)
 bot.grip = args.grip
 try:
     frame = cam.fresh_frame()
+    print(bot.follow_camera(frame))
     wanted = [args.item] + ([f"the middle of the opening of the {args.to}"] if args.to else [])
     hits = point.point_at(frame, wanted)
     found = {h["label"]: (h["x"], h["y"]) for h in hits}

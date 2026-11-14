@@ -108,6 +108,9 @@ class Earshot:
         self._end_job()
         self.stop_job.clear()
         self.paused.clear()
+        if self.arm:
+            state.check(self.arm.follow_camera(self.cam.fresh_frame()))
+            self.table = self.arm.table
         state.reset_steps()
         state.set_mode(mode)
         self.job = threading.Thread(target=self._run_job, args=(fn,), daemon=True)

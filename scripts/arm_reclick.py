@@ -12,6 +12,7 @@ import cv2
 
 from earshot import config
 from earshot.arm.table import Table, leave_one_out_mm
+from earshot.arm import drift
 from earshot.camera import Camera
 
 saved = json.loads(config.CALIB_FILE.read_text())
@@ -64,4 +65,5 @@ if loo:
 for m, c in zip(marks, clicks):
     m["pixel"] = list(c)
 table.save(marks)
+drift.save_reference(img)          # so a nudged camera can be corrected automatically later
 print(f"Saved {config.CALIB_FILE}.")
