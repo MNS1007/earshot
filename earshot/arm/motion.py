@@ -144,10 +144,10 @@ class Arm:
         from earshot.arm import drift
 
         table, used, shift = drift.refit(frame)
-        if used >= 4:
+        if used >= 2:
             self.table = table
-            return f"camera checked against {used} marks (moved {shift:.0f} px since calibration)"
-        return f"camera check skipped: only {used} marks visible, using the saved calibration"
+            return f"camera checked: {used} marks agree it moved {shift:.0f} px since calibration"
+        return "camera check skipped: fewer than two marks visible, using the saved calibration"
 
     def go_home(self) -> None:
         self.move_joints(self.home)

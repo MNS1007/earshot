@@ -19,7 +19,8 @@ from earshot.arm.table import Table
 REF_FRAME = config.DATA / "calibration_frame.jpg"
 PATCH = 22          # half-size of the saved picture of a mark, pixels
 SEARCH = 90         # how far from its old place a mark is looked for, pixels
-GOOD = 0.6          # match score needed to trust a mark (1.0 = identical)
+GOOD = 0.7          # match score needed to trust a mark (1.0 = identical)
+AGREE_PX = 7.0      # marks whose movement differs from the common movement by more than this are ignored
 
 
 def save_reference(frame: np.ndarray) -> None:
@@ -52,17 +53,25 @@ def locate_marks(frame: np.ndarray) -> list[dict]:
 
 
 def refit(frame: np.ndarray) -> tuple[Table, int, float]:
-    """A Table for the camera as it is now. Returns (table, marks used, median shift in pixels).
+    """A Table for the camera as it is now. Returns (table, marks agreed, shift in pixels).
 
-    Falls back to the saved calibration when fewer than four marks can be found clearly.
+    A nudged camera moves every mark in the picture by nearly the same amount. So the marks
+    that are found clearly vote on one shift, any mark that disagrees with the rest is thrown
+    out (a bowl rim or a block edge can look like a mark), and the saved calibration is moved
+    by the agreed shift. Needs at least two marks that agree; otherwise the saved calibration
+    is returned unchanged.
     """
     saved = json.loads(config.CALIB_FILE.read_text())
     base = Table.load()
     if not REF_FRAME.exists():
         return base, 0, 0.0
-    found = [(m, old) for m, old in zip(locate_marks(frame), saved["marks"]) if m["score"] >= GOOD]
-    if len(found) < 4:
-        return base, len(found), 0.0
-    shift = float(np.median([np.hypot(m["pixel"][0] - o["pixel"][0], m["pixel"][1] - o["pixel"][1]) for m, o in found]))
-    table = Table.fit([m["pixel"] for m, _ in found], [m["arm_xy"] for m, _ in found], saved["table_z"], saved["image_size"])
-    return table, len(found), shift
+    moves = np.array([[m["pixel"][0] - o["pixel"][0], m["pixel"][1] - o["pixel"][1]]
+                      for m, o in zip(locate_marks(frame), saved["marks"]) if m["score"] >= GOOD])
+    if len(moves) < 2:
+        return base, len(moves), 0.0
+    agree = moves[np.linalg.norm(moves - np.median(moves, axis=0), axis=1) < AGREE_PX]
+    if len(agree) < 2:
+        return base, 0, 0.0
+    dx, dy = agree.mean(axis=0)
+    shift = np.array([[1.0, 0.0, -dx], [0.0, 1.0, -dy], [0.0, 0.0, 1.0]])    # picture now -> picture at calibration
+    return Table(base.H @ shift, base.table_z, base.image_size), len(agree), float(np.hypot(dx, dy))
