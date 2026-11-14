@@ -356,10 +356,12 @@ class Arm:
         self.jaw_deg = None                      # carry and release with the wrist relaxed
         if drop:
             self.move_xyz(qx, qy, ABOVE_TABLE_DROP if tall else ABOVE_TABLE_LOW_DROP)
+            self._stage("6 over the container")
         else:
             self.move_xyz(qx, qy, ABOVE_TABLE_HOVER)
             self.move_height(ABOVE_TABLE_GRASP)
         self.set_gripper(GRIP_OPEN, wait=0.3)
+        self._stage("7 released")
         if not drop:
             self.move_height(ABOVE_TABLE_HOVER)
         self.go_home()

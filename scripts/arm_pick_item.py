@@ -41,7 +41,9 @@ try:
     print(f"model pointed at ({hits[0]['x']:.0f}, {hits[0]['y']:.0f}); its near edge on the table is at "
           f"({pick_px[0]:.0f}, {pick_px[1]:.0f})")
     if args.to:
-        hits = point.point_at(frame, [f"the middle of the opening of the {args.to}"])
+        # Aim at where the container stands on the table: a point up on its rim would be
+        # mapped to a spot far behind it by the tilted camera.
+        hits = point.point_at(frame, [args.to])
         if not hits:
             raise SystemExit(f'The camera cannot see "{args.to}".')
         place_px = (hits[0]["x"], hits[0]["y"])
@@ -77,6 +79,9 @@ try:
     qx, qy = bot.table.to_arm(*place_px)
     print(f'"{args.item}" at pixel ({pick_px[0]:.0f}, {pick_px[1]:.0f}) = {px * 100:.1f} cm out, {py * 100:.1f} cm across')
     print(f'going to {args.to or "the handover spot"} at {qx * 100:.1f} cm out, {qy * 100:.1f} cm across')
+    if (qx * qx + qy * qy) ** 0.5 > motion.MAX_PLACE_REACH:
+        print(f"  that is {(qx * qx + qy * qy) ** 0.5 * 100:.0f} cm from the base and the arm releases at "
+              f"{motion.MAX_PLACE_REACH * 100:.0f} cm: move it closer or the item will fall short")
     print(f"picture with both points: {config.DATA / 'last_pick.jpg'}")
     shots = config.DATA / "pick_frames"
     shots.mkdir(parents=True, exist_ok=True)
