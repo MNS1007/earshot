@@ -55,7 +55,7 @@ try:
     c0 = np.array(bot.table.to_arm(*pick_px))
     away = np.array(bot.table.to_arm(pick_px[0], pick_px[1] - 12.0)) - c0
     away /= np.linalg.norm(away)
-    side = bot._sideways_grasp(outline, away, np.array([-away[1], away[0]]))
+    side = bot._across_width_grasp(outline) or bot._sideways_grasp(outline, away, np.array([-away[1], away[0]]))
     if side is not None:
         middle, gap, vec = side
         marks = (("grip middle", middle, (0, 200, 0)), ("jaw", middle - vec * gap / 2, (0, 0, 255)),
@@ -68,7 +68,8 @@ try:
         u, v = bot.table.to_pixel(*middle)
         cv2.putText(plan, "grip here, jaws at the red dots", (int(u) + 14, int(v) + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 140, 0), 2)
         print(f"plan: grip the middle at {middle[0] * 100:.1f} cm out, {middle[1] * 100:.1f} cm across; "
-              f"item is {(gap - 2 * motion.CLEARANCE) * 100:.1f} cm wide, gap {gap * 100:.1f} cm, jaws closing sideways")
+              f"item is {(gap - 2 * motion.CLEARANCE) * 100:.1f} cm across its short side, gap {gap * 100:.1f} cm, "
+              "jaws closing across its width")
     elif (front := bot._front_back_grasp(outline, away, np.array([-away[1], away[0]]))) is not None:
         fixed, gap, vec = front
         a, b = bot.table.to_pixel(*fixed), bot.table.to_pixel(*(fixed + vec * gap))

@@ -311,6 +311,48 @@ class Arm:
                 best = (abs(q[4]), vec)
         return None if best is None else (middle, gap, best[1])
 
+    def _across_width_grasp(self, outline_px):
+        """Plan a grasp across an item's short side from the two base edges the camera can see.
+
+        A box turned at any angle to the camera shows two edges of its base, meeting at the
+        nearest corner. Mapped onto the table those give the base exactly: its middle is half
+        way between the outline's two ends, one edge is its length and the other its width.
+        The jaws close along the short edge, with the item in the middle of the gap.
+        Returns (middle xy, fingertip gap, unit vector the gap opens along), or None when only
+        one edge shows (the item is square-on), the two edges are not roughly at right angles,
+        the short side is too wide for the gripper, or the wrist cannot turn that way there.
+        """
+        if outline_px is None or len(outline_px) < 12:
+            return None
+        pts = np.array([self.table.to_arm(u, v) for u, v in outline_px])
+        k = max(2, len(pts) // 20)
+        a, b = pts[:k].mean(axis=0), pts[-k:].mean(axis=0)
+        chord = b - a
+        length = float(np.linalg.norm(chord))
+        if length < 0.01:
+            return None
+        normal = np.array([-chord[1], chord[0]]) / length
+        off = (pts - a) @ normal
+        i = int(np.argmax(np.abs(off)))
+        if abs(off[i]) < 0.2 * length:
+            return None                                # nearly a straight line: one edge only
+        e1, e2 = pts[i] - a, b - pts[i]
+        n1, n2 = float(np.linalg.norm(e1)), float(np.linalg.norm(e2))
+        angle = np.rad2deg(np.arccos(np.clip(e1 @ e2 / (n1 * n2), -1, 1)))
+        short, n_short = (e1, n1) if n1 <= n2 else (e2, n2)
+        gap = n_short + 2 * CLEARANCE
+        if not 55.0 <= angle <= 125.0 or n_short < 0.012 or gap > MAX_GAP:
+            return None
+        middle = (a + b) / 2.0
+        best = None
+        for vec in (short / n_short, -short / n_short):
+            fixed = middle - vec * gap / 2.0
+            q, err, _, ok = kin.ik_down(fixed[0], fixed[1], self.table.table_z + ABOVE_TABLE_APPROACH,
+                                        jaw_deg=float(np.rad2deg(np.arctan2(vec[1], vec[0]))))
+            if ok and err < 0.008 and (best is None or abs(q[4]) < best[0]):
+                best = (abs(q[4]), vec)
+        return None if best is None else (middle, gap, best[1])
+
     def _front_back_grasp(self, outline_px, away: np.ndarray, left: np.ndarray):
         """Plan a grasp across an item's depth, for an item whose long side faces the camera.
 
@@ -352,7 +394,9 @@ class Arm:
         away = np.array(self.table.to_arm(pick_px[0], pick_px[1] - 12.0)) - np.array([px, py])
         away = away / np.linalg.norm(away)        # along the table, from the camera toward the item
         left = np.array([-away[1], away[0]])      # along the table, across the camera's view
-        side = self._sideways_grasp(outline_px, away, left)
+        # First choice: both base edges visible, so the item's middle, width and angle are all
+        # measured and the jaws close straight across its width. Second: square-on to the camera.
+        side = self._across_width_grasp(outline_px) or self._sideways_grasp(outline_px, away, left)
         if side is not None:
             # Centre grasp, jaws closing across the camera's view. Both sides of the item are in
             # plain sight where it meets the table, so its middle and its width are measured, not
