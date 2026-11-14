@@ -20,6 +20,7 @@ RATE_HZ = 30
 GRIP_OPEN = 45.0          # 0-100, LeRobot's gripper scale: used for letting go
 ABOVE_TABLE_APPROACH = 0.025  # lowered to here normally; from here down the arm feels for the table
 ABOVE_TABLE_GRASP = 0.006     # height for setting an item back down on the table
+READY_HEIGHT = 0.12          # fingertip height of the travel pose, above the tallest item
 ABOVE_TABLE_HOVER = 0.06
 ABOVE_TABLE_DROP = 0.14    # over a tall container; the gripper leans at this height
 ABOVE_TABLE_LOW_DROP = 0.08  # over a bowl or a box
@@ -56,6 +57,7 @@ class Arm:
         self.jaw_deg: Optional[float] = None    # direction the jaws close along; None = toward the base
         self.abort = threading.Event()          # set from another thread to stop the current move
         self._closed = 5.0                      # the gripper setting last used to close on an item
+        self._ready: Optional[np.ndarray] = None
         self.on_stage = None                    # optional callback(name) at each stage of a pick, for recording
         self.look_if_holding = None             # optional callback() -> True/False/None: a camera look after lifting
 
@@ -159,6 +161,35 @@ class Arm:
             reached = float(h)
         self._at = (x, y, reached)
         return self.last_lean
+
+    def go_ready(self) -> None:
+        """A high pose over the middle of the work area, so moves to and from rest pass above the items."""
+        if self._ready is None:
+            q, err, _, ok = kin.ik_down(0.19, 0.05, self.table.table_z + READY_HEIGHT)
+            q[4] = 0.0                                # wrist straight while travelling
+            self._ready = q if ok and err < 0.01 else self.home
+        self.move_joints(self._ready)
+
+    def move_above_aligned(self, x: float, y: float) -> None:
+        """Go to directly above (x, y), as high as the arm can hold the pose it will have at the table.
+
+        The pose at the table is worked out first and then followed upward slice by slice, so
+        the wrist is already turned the right way when the arm arrives above the item. From
+        there the way down is a straight drop with no turning, which is what keeps the open
+        jaws from brushing the item on the way.
+        """
+        q = self._solve(x, y, 0.0)
+        top, q_top = 0.0, q
+        for h in np.arange(0.01, ABOVE_TABLE_HOVER + 0.001, 0.01):
+            try:
+                q = self._solve(x, y, float(h), seed=q)
+            except ReachError:
+                break
+            if np.max(np.abs(q - q_top)) > 25.0:      # the solver jumped to a different arm shape: stop below it
+                break
+            top, q_top = float(h), q
+        self.move_joints(q_top)
+        self._at = (x, y, top)
 
     def tip_height(self) -> float:
         """Where the fingertip really is above the table, from the joints as measured (not as commanded)."""
@@ -327,9 +358,10 @@ class Arm:
         away = line_vec if side is None else away  # direction to step back if the jaw lands on the item
         closed = 3.0 * (1.0 - self.grip)
         self._closed = closed
+        self.go_ready()                          # up and clear of everything on the table first
         self.set_gripper(kin.gripper_for_gap(gap), wait=0.2)
-        self.move_xyz(px, py, ABOVE_TABLE_HOVER)
-        self._stage("1 above")
+        self.move_above_aligned(px, py)          # wrist already turned as it will be at the table
+        self._stage("1 above, aligned")
         for attempt in range(3):
             self.move_height(ABOVE_TABLE_APPROACH)
             self.lower_until_touch()
@@ -360,6 +392,7 @@ class Arm:
             self.go_home()
             return False
         self.jaw_deg = None                      # carry and release with the wrist relaxed
+        self.go_ready()                          # lift clear of the other items before moving sideways
         if drop:
             self.move_xyz(qx, qy, ABOVE_TABLE_DROP if tall else ABOVE_TABLE_LOW_DROP)
             self._stage("6 over the container")
