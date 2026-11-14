@@ -293,8 +293,8 @@ class Arm:
         across, depth = pts @ left, pts @ away
         width = float(across.max() - across.min())
         gap = width + 2 * CLEARANCE
-        if width < 0.008 or gap > MAX_GAP:
-            return None
+        if width < 0.008 or width >= NARROW_FACE or gap > MAX_GAP:
+            return None                           # wide across the view: its short side runs front to back
         mid_across = float((across.max() + across.min()) / 2.0)
         near = float(np.percentile(depth[np.abs(across - mid_across) < max(0.004, 0.2 * width)], 10))
         # How far in from the near edge to close. The far side cannot be seen, so this is a
@@ -310,6 +310,27 @@ class Arm:
             if ok and err < 0.008 and (best is None or abs(q[4]) < best[0]):
                 best = (abs(q[4]), vec)
         return None if best is None else (middle, gap, best[1])
+
+    def _front_back_grasp(self, outline_px, away: np.ndarray, left: np.ndarray):
+        """Plan a grasp across an item's depth, for an item whose long side faces the camera.
+
+        Its short side then runs front to back, which is the side to grip across. The item's
+        middle along its length is measured from the outline's two ends. Its depth cannot be
+        seen, so the fixed jaw comes down just in front of the near side and the other jaw,
+        opened wide, sweeps the item up against it. Returns (fixed jaw xy, gap, unit vector the
+        gap opens along) or None.
+        """
+        if outline_px is None or len(outline_px) < 12:
+            return None
+        pts = np.array([self.table.to_arm(u, v) for u, v in outline_px])
+        across, depth = pts @ left, pts @ away
+        mid_across = float((across.max() + across.min()) / 2.0)
+        span = max(0.004, 0.2 * float(across.max() - across.min()))
+        near = float(np.percentile(depth[np.abs(across - mid_across) < span], 10))
+        fixed = left * mid_across + away * (near - RAKE_LEAD)
+        _, err, _, ok = kin.ik_down(fixed[0], fixed[1], self.table.table_z + ABOVE_TABLE_APPROACH,
+                                    jaw_deg=float(np.rad2deg(np.arctan2(away[1], away[0]))))
+        return (fixed, RAKE_GAP, away) if ok and err < 0.008 else None
 
     def pick_place(self, pick_px, place_px, drop: bool, tall: bool = False, long_side_px=None, outline_px=None) -> bool:
         """Pick the item at `pick_px` and put it at `place_px` (camera pixels).
@@ -340,6 +361,11 @@ class Arm:
             middle, gap, line_vec = side
             line = float(np.rad2deg(np.arctan2(line_vec[1], line_vec[0])))
             fixed = middle - line_vec * gap / 2.0
+        elif (front := self._front_back_grasp(outline_px, away, left)) is not None:
+            # The item's long side faces the camera, so its short side runs front to back: close
+            # across that, centred on the item's measured middle.
+            fixed, gap, line_vec = front
+            line = float(np.rad2deg(np.arctan2(line_vec[1], line_vec[0])))
         else:
             # Rake grasp, for items whose outline could not be traced: the fixed jaw comes down
             # just in front of the item's near side and the other jaw sweeps the item up to it.

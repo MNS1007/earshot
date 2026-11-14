@@ -69,6 +69,15 @@ try:
         cv2.putText(plan, "grip here, jaws at the red dots", (int(u) + 14, int(v) + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 140, 0), 2)
         print(f"plan: grip the middle at {middle[0] * 100:.1f} cm out, {middle[1] * 100:.1f} cm across; "
               f"item is {(gap - 2 * motion.CLEARANCE) * 100:.1f} cm wide, gap {gap * 100:.1f} cm, jaws closing sideways")
+    elif (front := bot._front_back_grasp(outline, away, np.array([-away[1], away[0]]))) is not None:
+        fixed, gap, vec = front
+        a, b = bot.table.to_pixel(*fixed), bot.table.to_pixel(*(fixed + vec * gap))
+        cv2.line(plan, (int(a[0]), int(a[1])), (int(b[0]), int(b[1])), (0, 0, 255), 2)
+        for xy in (a, b):
+            cv2.circle(plan, (int(xy[0]), int(xy[1])), 6, (0, 0, 255), -1)
+        cv2.putText(plan, "long side faces the camera: jaws close front to back", (int(a[0]) + 14, int(a[1]) + 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 140, 0), 2)
+        print("plan: its long side faces the camera, so the jaws close front to back across its short side")
     else:
         print("plan: outline not usable, so sweeping from the near edge instead")
         cv2.circle(plan, (int(pick_px[0]), int(pick_px[1])), 6, (0, 0, 255), -1)
