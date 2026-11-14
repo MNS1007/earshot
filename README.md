@@ -6,8 +6,6 @@ A webcam films the table. A wristband (the Vexo Open band) hears you. A Gemini m
 
 There is no trained policy, no teleoperation data and no fine-tuning. The model decides what to move and where. Our code turns that into motion.
 
-Built solo at VexoHacks, Y Combinator, San Francisco. Everything in this repository was written on 14 November 2026. The commit history shows the order.
-
 ## Why this matters
 
 Teaching a robot a task today takes two things most workplaces do not have.
