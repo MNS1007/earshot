@@ -47,10 +47,32 @@ try:
         place_px = (hits[0]["x"], hits[0]["y"])
     else:
         place_px = bot.table.to_pixel(*config.HANDOVER_XY)
-    cv2.imwrite(str(config.DATA / "last_pick.jpg"), point.draw(frame, [
-        {"label": args.item, "x": pick_px[0], "y": pick_px[1]},
-        {"label": args.to or "handover", "x": place_px[0], "y": place_px[1]}] +
-        ([{"label": "end", "x": e[0], "y": e[1]} for e in long_side] if long_side else [])))
+    # Draw what the arm is about to do: where the jaws will be, not just where the model pointed.
+    import numpy as np
+    plan = frame.copy()
+    c0 = np.array(bot.table.to_arm(*pick_px))
+    away = np.array(bot.table.to_arm(pick_px[0], pick_px[1] - 12.0)) - c0
+    away /= np.linalg.norm(away)
+    side = bot._sideways_grasp(outline, away, np.array([-away[1], away[0]]))
+    if side is not None:
+        middle, gap, vec = side
+        marks = (("grip middle", middle, (0, 200, 0)), ("jaw", middle - vec * gap / 2, (0, 0, 255)),
+                 ("jaw", middle + vec * gap / 2, (0, 0, 255)))
+        a, b = bot.table.to_pixel(*(middle - vec * gap / 2)), bot.table.to_pixel(*(middle + vec * gap / 2))
+        cv2.line(plan, (int(a[0]), int(a[1])), (int(b[0]), int(b[1])), (0, 0, 255), 2)
+        for label, xy, colour in marks:
+            u, v = bot.table.to_pixel(*xy)
+            cv2.circle(plan, (int(u), int(v)), 6, colour, -1)
+        u, v = bot.table.to_pixel(*middle)
+        cv2.putText(plan, "grip here, jaws at the red dots", (int(u) + 14, int(v) + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 140, 0), 2)
+        print(f"plan: grip the middle at {middle[0] * 100:.1f} cm out, {middle[1] * 100:.1f} cm across; "
+              f"item is {(gap - 2 * motion.CLEARANCE) * 100:.1f} cm wide, gap {gap * 100:.1f} cm, jaws closing sideways")
+    else:
+        print("plan: outline not usable, so sweeping from the near edge instead")
+        cv2.circle(plan, (int(pick_px[0]), int(pick_px[1])), 6, (0, 0, 255), -1)
+    cv2.circle(plan, (int(place_px[0]), int(place_px[1])), 8, (255, 120, 0), 2)
+    cv2.putText(plan, args.to or "handover", (int(place_px[0]) + 12, int(place_px[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 120, 0), 2)
+    cv2.imwrite(str(config.DATA / "last_pick.jpg"), plan)
     px, py = bot.table.to_arm(*pick_px)
     qx, qy = bot.table.to_arm(*place_px)
     print(f'"{args.item}" at pixel ({pick_px[0]:.0f}, {pick_px[1]:.0f}) = {px * 100:.1f} cm out, {py * 100:.1f} cm across')
