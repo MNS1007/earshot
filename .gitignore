@@ -1,0 +1,10 @@
+# keys never go in a commit
+.env
+# the band kit is a reference, cloned beside our code
+vexo-open-kit/
+# local recordings, calibration and caches
+data/
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
