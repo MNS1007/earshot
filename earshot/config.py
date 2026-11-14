@@ -34,6 +34,9 @@ HOVER_Z = 0.06        # travel height (straight down is only reachable up to abo
 GRASP_Z = 0.015       # fingertip height when closing on an item lying flat
 DROP_Z = 0.14         # release height over a cup (the gripper leans at this height)
 
+# Where the arm sets an item down for the person to take, in the arm's frame (metres).
+HANDOVER_XY = (0.16, -0.12)
+
 # Local services
 UI_PORT = 8765        # screen + state API
 VOICE_POST_URL = f"http://127.0.0.1:{UI_PORT}/api/voice"   # the voice process posts actions here
