@@ -194,11 +194,19 @@ class Earshot:
         return False
 
     def _destination_px(self, step: Step, frame) -> Optional[tuple[float, float]]:
+        """Where the step's item should end up, as a camera pixel on the table."""
         if step.dest_kind == "place" and step.place_xy:
             h, w = frame.shape[:2]
             return step.place_xy[0] * w / 1000.0, step.place_xy[1] * h / 1000.0
-        return self._find(f"the middle of the opening of the {step.destination}" if step.dest_kind == "container"
-                          else step.destination)
+        # The point model aims at where a thing rests on the table. That is what the calibration
+        # needs: a point up on a cup's rim would be mapped to a spot far behind the cup.
+        px = self._find(step.destination)
+        if px is not None and self.table is not None:
+            x, y = self.table.to_arm(*px)
+            if (x * x + y * y) ** 0.5 > 0.36:
+                state.check(f"The {step.destination} is about {(x * x + y * y) ** 0.5 * 100:.0f} cm from my base. "
+                            "I reach about 30 cm; move it closer.")
+        return px
 
     def do_alone(self) -> None:
         """Run every step, then apply any sorting rule to whatever is still loose."""
