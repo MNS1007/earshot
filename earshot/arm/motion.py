@@ -34,6 +34,8 @@ class Arm:
         self.home = arm.read_joints(self.robot)  # where the arm was resting; it returns here
         self.home_grip = arm.read_gripper(self.robot)
         self._grip_now = self.home_grip
+        self._at = (0.0, 0.0, ABOVE_TABLE_HOVER)
+        self.last_lean = 0.0
 
     # -- low level -------------------------------------------------------------------------
     def _send(self, q: np.ndarray, grip: float) -> None:
@@ -69,16 +71,42 @@ class Arm:
         self._grip_now = value
         time.sleep(wait)
 
-    def move_xyz(self, x: float, y: float, above_table: float) -> tuple[float, float]:
-        """Fingertips to (x, y) at a height above the table. Returns (position error m, lean deg)."""
-        q, err, lean, ok = kin.ik_down(x, y, self.table.table_z + above_table, seed_deg=arm.read_joints(self.robot))
-        if not ok or err > 0.01:
-            q, err, lean, ok = kin.ik_down(x, y, self.table.table_z + above_table)   # retry from the standard guess
-        if not ok or err > 0.01:
+    def _solve(self, x: float, y: float, above_table: float, seed=None) -> np.ndarray:
+        q, err, lean, ok = kin.ik_down(x, y, self.table.table_z + above_table, seed_deg=seed)
+        if not ok or err > 0.008:
             raise ReachError(f"Cannot reach x {x * 100:.0f} cm, y {y * 100:.0f} cm at {above_table * 100:.0f} cm "
                              f"above the table (off by {err * 1000:.0f} mm).")
-        self.move_joints(q)
-        return err, lean
+        self.last_lean = lean
+        return q
+
+    def move_xyz(self, x: float, y: float, above_table: float) -> float:
+        """Fingertips to (x, y) at a height above the table. Returns the gripper's lean in degrees.
+
+        Close to the base the arm cannot get as high, so if the height is out of reach it
+        settles for the highest it can manage there, down to 3 cm.
+        """
+        for h in (above_table, 0.045, 0.03):
+            if h > above_table:
+                continue
+            try:
+                q = self._solve(x, y, h)
+            except ReachError:
+                if h == 0.03 or above_table <= 0.03:
+                    raise
+                continue
+            self.move_joints(q)
+            self._at = (x, y, h)
+            return self.last_lean
+
+    def move_height(self, above_table: float) -> float:
+        """Straight up or down over the current spot, in 1 cm slices so the tip does not swing sideways."""
+        x, y, h0 = self._at
+        q = arm.read_joints(self.robot)
+        for h in np.linspace(h0, above_table, max(2, int(abs(above_table - h0) / 0.01) + 1))[1:]:
+            q = self._solve(x, y, float(h), seed=q)
+            self.move_joints(q)
+        self._at = (x, y, above_table)
+        return self.last_lean
 
     def go_home(self) -> None:
         self.move_joints(self.home)
@@ -96,17 +124,17 @@ class Arm:
         closed = max(0.0, 22.0 - 22.0 * self.grip)
         self.set_gripper(GRIP_OPEN, wait=0.2)
         self.move_xyz(px, py, ABOVE_TABLE_HOVER)
-        self.move_xyz(px, py, ABOVE_TABLE_GRASP)
+        self.move_height(ABOVE_TABLE_GRASP)
         self.set_gripper(closed)
-        self.move_xyz(px, py, ABOVE_TABLE_HOVER)
+        self.move_height(ABOVE_TABLE_HOVER)
         if drop:
             self.move_xyz(qx, qy, ABOVE_TABLE_DROP if tall else ABOVE_TABLE_LOW_DROP)
         else:
             self.move_xyz(qx, qy, ABOVE_TABLE_HOVER)
-            self.move_xyz(qx, qy, ABOVE_TABLE_GRASP + 0.004)
+            self.move_height(ABOVE_TABLE_GRASP + 0.004)
         self.set_gripper(GRIP_OPEN, wait=0.3)
         if not drop:
-            self.move_xyz(qx, qy, ABOVE_TABLE_HOVER)
+            self.move_height(ABOVE_TABLE_HOVER)
         self.go_home()
         return True
 

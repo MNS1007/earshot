@@ -32,12 +32,12 @@ try:
         x, y = marks[int(args.a) - 1]["arm_xy"]
         input(f"Will glide to {motion.ABOVE_TABLE_HOVER * 100:.0f} cm above mark {int(args.a)} "
               f"(x {x * 100:.1f} cm, y {y * 100:.1f} cm). Press Enter to move, Ctrl+C to cancel...")
-        err, lean = bot.move_xyz(x, y, motion.ABOVE_TABLE_HOVER)
-        print(f"  solver error {err * 1000:.1f} mm, lean {lean:.0f} deg. Is the tip above the mark? How far off, which way?")
+        lean = bot.move_xyz(x, y, motion.ABOVE_TABLE_HOVER)
+        print(f"  gripper leaning {lean:.0f} deg from straight down. Is the tip above the mark? How far off, which way?")
         if args.what == "touch":
             input("Press Enter to lower to grasp height...")
-            bot.move_xyz(x, y, motion.ABOVE_TABLE_GRASP)
-            print("  Is the tip just above the table, over the mark?")
+            lean = bot.move_height(motion.ABOVE_TABLE_GRASP)
+            print(f"  leaning {lean:.0f} deg. Is the tip just above the table, over the mark? How far off, which way?")
         input("Press Enter to go back to rest...")
     else:
         if args.b is None or args.to is None:
