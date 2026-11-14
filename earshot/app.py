@@ -141,13 +141,17 @@ class Earshot:
         task = state.task
         return next((s for s in task.steps if s.status == "todo"), None) if task else None
 
+    def _grasp(self, what: str) -> Optional[dict]:
+        """Where an item is and which way it lies, for picking it up."""
+        return point.grasp_of(self.cam.fresh_frame(), what)
+
     def _find(self, what: str) -> Optional[tuple[float, float]]:
         hits = point.point_at(self.cam.fresh_frame(), [what])
         return (hits[0]["x"], hits[0]["y"]) if hits else None
 
-    def _move(self, pick_px, place_px, drop: bool, tall: bool = False) -> None:
+    def _move(self, pick_px, place_px, drop: bool, tall: bool = False, long_side=None) -> None:
         if self.arm:
-            self.arm.pick_place(pick_px, place_px, drop=drop, tall=tall)
+            self.arm.pick_place(pick_px, place_px, drop=drop, tall=tall, long_side_px=long_side)
         else:
             state.robot(f"(no arm) would move {tuple(round(v) for v in pick_px)} to {tuple(round(v) for v in place_px)}")
             time.sleep(1.0)
@@ -157,13 +161,15 @@ class Earshot:
         for attempt in (1, 2):
             if not self._gate():
                 return False
-            pick_px = self._find(step.item)
-            if pick_px is None:
+            grasp = self._grasp(step.item)
+            if grasp is None:
                 state.check(f"Cannot see {step.item} on the table.")
                 return False
+            pick_px = (grasp["x"], grasp["y"])
             state.pick_attempted()
             state.robot(f"Step {step.n}: {step.item} to {step.destination}" + (" (second try)" if attempt == 2 else ""))
-            self._move(pick_px, place_px, drop, tall=any(t in step.destination.lower() for t in TALL))
+            self._move(pick_px, place_px, drop, tall=any(t in step.destination.lower() for t in TALL),
+                       long_side=grasp["long_side"])
             ok, why = verify()
             if ok:
                 state.pick_succeeded()

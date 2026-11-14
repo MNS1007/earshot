@@ -31,28 +31,33 @@ bot.grip = args.grip
 try:
     frame = cam.fresh_frame()
     print(bot.follow_camera(frame))
-    wanted = [args.item] + ([f"the middle of the opening of the {args.to}"] if args.to else [])
-    hits = point.point_at(frame, wanted)
-    found = {h["label"]: (h["x"], h["y"]) for h in hits}
-    if args.item not in found:
+    grasp = point.grasp_of(frame, args.item)
+    if grasp is None:
         raise SystemExit(f'The camera cannot see "{args.item}".')
-    pick_px = found[args.item]
+    pick_px, long_side = (grasp["x"], grasp["y"]), grasp["long_side"]
     if args.to:
-        if wanted[1] not in found:
+        hits = point.point_at(frame, [f"the middle of the opening of the {args.to}"])
+        if not hits:
             raise SystemExit(f'The camera cannot see "{args.to}".')
-        place_px = found[wanted[1]]
+        place_px = (hits[0]["x"], hits[0]["y"])
     else:
         place_px = bot.table.to_pixel(*config.HANDOVER_XY)
     cv2.imwrite(str(config.DATA / "last_pick.jpg"), point.draw(frame, [
         {"label": args.item, "x": pick_px[0], "y": pick_px[1]},
-        {"label": args.to or "handover", "x": place_px[0], "y": place_px[1]}]))
+        {"label": args.to or "handover", "x": place_px[0], "y": place_px[1]}] +
+        ([{"label": "end", "x": e[0], "y": e[1]} for e in long_side] if long_side else [])))
     px, py = bot.table.to_arm(*pick_px)
     qx, qy = bot.table.to_arm(*place_px)
     print(f'"{args.item}" at pixel ({pick_px[0]:.0f}, {pick_px[1]:.0f}) = {px * 100:.1f} cm out, {py * 100:.1f} cm across')
     print(f'going to {args.to or "the handover spot"} at {qx * 100:.1f} cm out, {qy * 100:.1f} cm across')
+    if long_side:
+        jaw = bot.jaw_across(pick_px, *long_side)
+        print(f"it lies lengthwise, so the jaws will close across it (jaw line at {jaw:.0f} degrees in the arm's frame)")
+    else:
+        print("no clear long side: the jaws close toward the base")
     print(f"picture with both points: {config.DATA / 'last_pick.jpg'}")
     input("Press Enter to move, Ctrl+C to cancel...")
-    bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall)
+    bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall, long_side_px=long_side)
     if args.check:
         r = point.check_placed(cam.fresh_frame(), args.item, args.to or "the table near the front edge")
         print("camera check:", r)
