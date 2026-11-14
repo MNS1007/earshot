@@ -30,9 +30,9 @@ EE_FRAME = "gripper_frame_link"
 ARM_JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 
 # Heights above the table, in metres, in the arm's base frame (z of the table found at calibration).
-HOVER_Z = 0.10        # travel height
+HOVER_Z = 0.06        # travel height (straight down is only reachable up to about here)
 GRASP_Z = 0.015       # fingertip height when closing on an item lying flat
-DROP_Z = 0.09         # release height over a container
+DROP_Z = 0.14         # release height over a cup (the gripper leans at this height)
 
 # Local services
 UI_PORT = 8765        # screen + state API
