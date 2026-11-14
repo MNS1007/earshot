@@ -45,7 +45,7 @@ class Arm:
         """Glide to `target` (degrees). Blocks until there."""
         grip = self._grip_now if grip is None else grip
         start = arm.read_joints(self.robot)
-        step = 1.0 + 3.0 * self.speed                       # degrees per tick, largest joint
+        step = 0.3 + 3.0 * self.speed                       # degrees per tick, largest joint (0.2 -> about 27 deg/s)
         n = max(2, int(np.ceil(np.max(np.abs(target - start)) / step)))
         for i in range(1, n + 1):
             s = 0.5 - 0.5 * np.cos(np.pi * i / n)           # ease in and out
