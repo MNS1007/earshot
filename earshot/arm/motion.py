@@ -33,6 +33,7 @@ GRIP_DEPTH = 0.016           # how far behind the item's near edge the jaws clos
 GRIP_DEPTH_MAX = 0.03        # deepest the jaws close behind the near edge
 NARROW_FACE = 0.045          # an item narrower than this across the view is taken to be end-on to the camera
 MAX_GAP = 0.095              # widest fingertip gap at which the swinging jaw still closes near the table
+EMPTY_GRIPPER_READS = 2.0    # what the gripper position reads when it has closed on nothing (seen on every miss today)
 RAKE_STEP_BACK = 0.015       # how far to step back when the fixed jaw comes down on top of the item
 ON_TABLE = 0.014             # a fingertip measured lower than this is on the table, not on an item
 RAKE_GAP = 0.085             # fingertip gap while coming down: about the widest at which the swinging jaw still reaches the table
@@ -373,7 +374,10 @@ class Arm:
 
     def holding_something(self) -> bool:
         """After closing: a gripper that stopped short of its target is holding an item."""
-        return arm.read_gripper(self.robot) > self._closed + 5.0
+        # Shut on nothing, this gripper has read 2 every time. Holding a block by a thin wall it
+        # read 3, so the margin is small on purpose: letting go of something it has is worse
+        # than carrying nothing, which the camera check catches afterwards anyway.
+        return arm.read_gripper(self.robot) > EMPTY_GRIPPER_READS + 0.6
 
     def back_off(self) -> None:
         """After a stop: let go of anything held, lift clear, and return to rest."""
