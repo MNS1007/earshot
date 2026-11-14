@@ -51,6 +51,17 @@ try:
     print(f'"{args.item}" at pixel ({pick_px[0]:.0f}, {pick_px[1]:.0f}) = {px * 100:.1f} cm out, {py * 100:.1f} cm across')
     print(f'going to {args.to or "the handover spot"} at {qx * 100:.1f} cm out, {qy * 100:.1f} cm across')
     print(f"picture with both points: {config.DATA / 'last_pick.jpg'}")
+    shots = config.DATA / "pick_frames"
+    shots.mkdir(parents=True, exist_ok=True)
+    for old in shots.glob("*.jpg"):
+        old.unlink()
+
+    def record(stage: str) -> None:
+        """Save what the camera sees at each stage, so a miss can be looked at afterwards."""
+        print("  stage:", stage)
+        cv2.imwrite(str(shots / f"{stage.split(',')[0].replace(' ', '_')}.jpg"), cam.fresh_frame())
+
+    bot.on_stage = record
     input("Press Enter to move, Ctrl+C to cancel...")
     held = bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=args.tall, long_side_px=long_side,
                           outline_px=grasp.get("outline"))

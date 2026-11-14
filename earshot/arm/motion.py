@@ -44,6 +44,7 @@ class Arm:
         self.jaw_deg: Optional[float] = None    # direction the jaws close along; None = toward the base
         self.abort = threading.Event()          # set from another thread to stop the current move
         self._closed = 5.0                      # the gripper setting last used to close on an item
+        self.on_stage = None                    # optional callback(name) at each stage of a pick, for recording
 
     # -- low level -------------------------------------------------------------------------
     def _send(self, q: np.ndarray, grip: float) -> None:
@@ -256,10 +257,15 @@ class Arm:
         self._closed = closed
         self.set_gripper(kin.gripper_for_gap(RAKE_GAP), wait=0.2)
         self.move_xyz(px, py, ABOVE_TABLE_HOVER)
+        self._stage("1 above")
         self.move_height(ABOVE_TABLE_APPROACH)
-        self.lower_until_touch()                 # fingertips on the table, so the item is gripped low
+        self._stage("2 low")
+        reached = self.lower_until_touch()       # fingertips on the table, so the item is gripped low
+        self._stage(f"3 touch at {reached * 1000:.0f} mm, lean {self.last_lean:.0f} deg, joints {np.round(arm.read_joints(self.robot))}")
         self.set_gripper(closed)
+        self._stage(f"4 closed, gripper reads {arm.read_gripper(self.robot):.0f}")
         self.move_height(ABOVE_TABLE_HOVER)
+        self._stage(f"5 lifted, gripper reads {arm.read_gripper(self.robot):.0f}")
         if not self.holding_something():         # the fingers met: nothing is between them
             self.jaw_deg = None
             self.set_gripper(GRIP_OPEN, wait=0.2)
@@ -276,6 +282,10 @@ class Arm:
             self.move_height(ABOVE_TABLE_HOVER)
         self.go_home()
         return True
+
+    def _stage(self, name: str) -> None:
+        if self.on_stage:
+            self.on_stage(name)
 
     def holding_something(self) -> bool:
         """After closing: a gripper that stopped short of its target is holding an item."""
