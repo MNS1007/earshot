@@ -55,7 +55,7 @@ def joint_offsets(robot) -> np.ndarray:
         cal = robot.bus.calibration[j]
         max_res = robot.bus.resolution(robot.bus.motors[j].model) - 1
         half_turn = max_res // 2                      # the calibration pose reads exactly this
-        out.append(((cal.range_min + cal.range_max) / 2 - half_turn) * 360.0 / max_res)
+        out.append(((cal.range_min + cal.range_max) / 2 - half_turn) * 360.0 / max_res + config.ARM_ZERO_FIX.get(j, 0.0))
     return np.array(out)
 
 

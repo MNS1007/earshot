@@ -28,6 +28,10 @@ ARM_ID = "follower"
 URDF_PATH = str(Path.home() / "developer/SO-ARM100/Simulation/SO101/so101_new_calib.urdf")
 EE_FRAME = "gripper_frame_link"
 ARM_CALIBRATION = Path.home() / ".cache/huggingface/lerobot/calibration/robots/so_follower" / f"{ARM_ID}.json"
+# Extra degrees between this arm's motor zero and the URDF's, beyond what the calibration file
+# explains. The wrist roll was calibrated a quarter turn from the URDF's zero: commanded to
+# close toward the base, the jaws closed sideways. Found from pictures of a pick, 2026-11-14.
+ARM_ZERO_FIX = {"wrist_roll": 90.0}
 ARM_JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 
 # Heights above the table, in metres, in the arm's base frame (z of the table found at calibration).

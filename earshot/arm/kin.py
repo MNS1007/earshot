@@ -45,8 +45,9 @@ def joint_limits_deg() -> dict[str, tuple[float, float]]:
     if config.ARM_CALIBRATION.exists():
         cal = json.loads(config.ARM_CALIBRATION.read_text())
         for name in config.ARM_JOINTS:
-            lo = (cal[name]["range_min"] - 2047) * 360.0 / 4095 + 2.0      # 2 degrees of margin
-            hi = (cal[name]["range_max"] - 2047) * 360.0 / 4095 - 2.0
+            fix = config.ARM_ZERO_FIX.get(name, 0.0)
+            lo = (cal[name]["range_min"] - 2047) * 360.0 / 4095 + fix + 2.0      # 2 degrees of margin
+            hi = (cal[name]["range_max"] - 2047) * 360.0 / 4095 + fix - 2.0
             out[name] = (max(out[name][0], lo), min(out[name][1], hi))
     return out
 
