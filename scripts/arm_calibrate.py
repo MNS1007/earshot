@@ -26,13 +26,14 @@ args = ap.parse_args()
 
 print("Connecting with the motors off. Hold the arm: it will be limp.")
 bot = arm.open_limp()
-tips = []
+tips, joints = [], []
 try:
     for i in range(1, args.marks + 1):
         input(f"\nMark {i} of {args.marks}: put the closed gripper tip on the mark, pointing down, then press Enter...")
         q = arm.read_joints(bot)
         x, y, z = kin.fk(q)[:3, 3]
         tips.append((x, y, z))
+        joints.append([round(float(v), 2) for v in q])
         print(f"  joints {np.round(q, 1)}  ->  tip at x {x * 100:.1f} cm, y {y * 100:.1f} cm, z {z * 100:.1f} cm")
     input("\nNow move the arm out of the camera's view (fold it back) and press Enter...")
 finally:
@@ -89,7 +90,7 @@ print("\nFit error at each mark (mm):", [round(e, 1) for e in fit_err])
 if loo:
     print("Error predicting each mark from the others (mm):", [round(e, 1) for e in loo],
           f"  worst {max(loo):.1f}")
-marks = [{"pixel": list(c), "arm_xy": list(a), "z": t[2]} for c, a, t in zip(clicks, arm_xy, tips)]
+marks = [{"pixel": list(c), "arm_xy": list(a), "z": t[2], "joints": j} for c, a, t, j in zip(clicks, arm_xy, tips, joints)]
 table.save(marks)
 out = config.DATA / "calibration.jpg"
 view = img.copy()
