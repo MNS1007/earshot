@@ -115,6 +115,32 @@ def point_at(image: np.ndarray | str | Path, descriptions: list[str],
     return [found[i] for i in sorted(found)]
 
 
+def base_corners(outline: np.ndarray) -> np.ndarray:
+    """Reduce a contact outline to the corners of the item's base that the camera can see.
+
+    The outline is the lower edge of the item's silhouette, left to right. Its two ends usually
+    run up the item's vertical side edges, which lean outward in the picture and are not on the
+    table. This fits straight segments to the outline, drops the steep segments at either end,
+    and returns what is left: 2 points for an item seen square-on (one base edge), 3 points
+    for an item seen at an angle (two base edges meeting at the nearest corner).
+    """
+    poly = cv2.approxPolyDP(outline.astype(np.float32).reshape(-1, 1, 2), 3.0, False).reshape(-1, 2)
+    pts = [tuple(q) for q in poly]
+
+    def steep(a, b) -> bool:
+        return abs(b[1] - a[1]) > 1.6 * abs(b[0] - a[0])
+
+    while len(pts) > 2 and steep(pts[0], pts[1]):
+        pts.pop(0)
+    while len(pts) > 2 and steep(pts[-2], pts[-1]):
+        pts.pop()
+    if len(pts) > 3:                      # keep the two longest neighbouring segments
+        lengths = [np.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]) for i in range(len(pts) - 1)]
+        i = int(np.argmax([lengths[j] + lengths[j + 1] for j in range(len(lengths) - 1)]))
+        pts = pts[i:i + 3]
+    return np.array(pts, dtype=float)
+
+
 def near_edge(image_bgr: np.ndarray, x: float, y: float) -> tuple[float, float]:
     """Slide a point on a coloured item straight down to where the item meets the table.
 

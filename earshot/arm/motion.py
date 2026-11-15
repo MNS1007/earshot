@@ -324,28 +324,70 @@ class Arm:
         """
         if outline_px is None or len(outline_px) < 12:
             return None
-        pts = np.array([self.table.to_arm(u, v) for u, v in outline_px])
-        k = max(2, len(pts) // 20)
-        a, b = pts[:k].mean(axis=0), pts[-k:].mean(axis=0)
-        chord = b - a
-        length = float(np.linalg.norm(chord))
-        if length < 0.01:
-            return None
-        normal = np.array([-chord[1], chord[0]]) / length
-        off = (pts - a) @ normal
-        i = int(np.argmax(np.abs(off)))
-        if abs(off[i]) < 0.2 * length:
-            return None                                # nearly a straight line: one edge only
-        e1, e2 = pts[i] - a, b - pts[i]
+        from earshot.vision.point import base_corners
+
+        corners = base_corners(np.asarray(outline_px, dtype=float))
+        if len(corners) != 3:
+            return None                                # one base edge only: the item is square-on
+        a, c, b = (np.array(self.table.to_arm(u, v)) for u, v in corners)
+        e1, e2 = c - a, b - c
         n1, n2 = float(np.linalg.norm(e1)), float(np.linalg.norm(e2))
         angle = np.rad2deg(np.arccos(np.clip(e1 @ e2 / (n1 * n2), -1, 1)))
         short, n_short = (e1, n1) if n1 <= n2 else (e2, n2)
         gap = n_short + 2 * CLEARANCE
-        if not 55.0 <= angle <= 125.0 or n_short < 0.012 or gap > MAX_GAP:
+        if not 65.0 <= angle <= 115.0 or n_short < 0.012 or gap > MAX_GAP:
             return None
         middle = (a + b) / 2.0
         best = None
         for vec in (short / n_short, -short / n_short):
+            fixed = middle - vec * gap / 2.0
+            q, err, _, ok = kin.ik_down(fixed[0], fixed[1], self.table.table_z + ABOVE_TABLE_APPROACH,
+                                        jaw_deg=float(np.rad2deg(np.arctan2(vec[1], vec[0]))))
+            if ok and err < 0.008 and (best is None or abs(q[4]) < best[0]):
+                best = (abs(q[4]), vec)
+        return None if best is None else (middle, gap, best[1])
+
+    def _width_grasp(self, outline_px, away: np.ndarray):
+        """Plan a grasp across an item's width from the base edge that faces the camera.
+
+        The base edge the camera sees best is a line on the table, so its length, its middle and
+        its direction are all measured. When that edge is short it is the item's width: the jaws
+        close along it, centred on its middle, one width in from the edge so they sit near the
+        middle of the item's length. The item may be turned either way; the jaws follow the edge.
+        Returns (middle xy, fingertip gap, unit vector the gap opens along), or None when no edge
+        was found, the edge is long (the item's long side faces the camera), or the wrist cannot
+        turn that way there.
+        """
+        if outline_px is None or len(outline_px) < 12:
+            return None
+        from earshot.vision.point import base_corners
+
+        corners = [np.array(self.table.to_arm(u, v)) for u, v in base_corners(np.asarray(outline_px, dtype=float))]
+        if len(corners) < 2:
+            return None
+        segments = [(corners[i], corners[i + 1]) for i in range(len(corners) - 1)
+                    if np.linalg.norm(corners[i + 1] - corners[i]) > 0.008]
+        if not segments:
+            return None
+        # The edge facing the camera is the one lying most across the view; an edge running away
+        # from the camera is the item's side.
+        a, b = min(segments, key=lambda ab: abs(float((ab[1] - ab[0]) @ away)) / float(np.linalg.norm(ab[1] - ab[0])))
+        along = (b - a) / float(np.linalg.norm(b - a))     # the jaws close along the width edge
+        spread = np.array([c @ along for c in corners])    # every base corner seen, measured along that edge
+        width = float(spread.max() - spread.min())
+        if width >= NARROW_FACE:
+            return None
+        gap = max(width, 0.03) + 2 * CLEARANCE             # part of the edge may be hidden: never plan for under 3 cm
+        if gap > MAX_GAP:
+            return None
+        centre_along = float((spread.max() + spread.min()) / 2.0)
+        a = b = along * centre_along + (np.eye(2) - np.outer(along, along)) @ ((a + b) / 2.0)
+        inward = np.array([-along[1], along[0]])       # square to it, into the item
+        if inward @ away < 0:
+            inward = -inward
+        middle = (a + b) / 2.0 + inward * min(width, GRIP_DEPTH_MAX)
+        best = None
+        for vec in (along, -along):                    # the gap can open to either side: take the easier wrist turn
             fixed = middle - vec * gap / 2.0
             q, err, _, ok = kin.ik_down(fixed[0], fixed[1], self.table.table_z + ABOVE_TABLE_APPROACH,
                                         jaw_deg=float(np.rad2deg(np.arctan2(vec[1], vec[0]))))
@@ -394,9 +436,8 @@ class Arm:
         away = np.array(self.table.to_arm(pick_px[0], pick_px[1] - 12.0)) - np.array([px, py])
         away = away / np.linalg.norm(away)        # along the table, from the camera toward the item
         left = np.array([-away[1], away[0]])      # along the table, across the camera's view
-        # First choice: both base edges visible, so the item's middle, width and angle are all
-        # measured and the jaws close straight across its width. Second: square-on to the camera.
-        side = self._across_width_grasp(outline_px) or self._sideways_grasp(outline_px, away, left)
+        # First choice: close across the item's width, measured from the base edge facing the camera.
+        side = self._width_grasp(outline_px, away)
         if side is not None:
             # Centre grasp, jaws closing across the camera's view. Both sides of the item are in
             # plain sight where it meets the table, so its middle and its width are measured, not

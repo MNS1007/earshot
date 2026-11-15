@@ -55,7 +55,7 @@ try:
     c0 = np.array(bot.table.to_arm(*pick_px))
     away = np.array(bot.table.to_arm(pick_px[0], pick_px[1] - 12.0)) - c0
     away /= np.linalg.norm(away)
-    side = bot._across_width_grasp(outline) or bot._sideways_grasp(outline, away, np.array([-away[1], away[0]]))
+    side = bot._width_grasp(outline, away)
     if side is not None:
         middle, gap, vec = side
         marks = (("grip middle", middle, (0, 200, 0)), ("jaw", middle - vec * gap / 2, (0, 0, 255)),
