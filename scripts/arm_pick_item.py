@@ -56,8 +56,26 @@ try:
     c0 = np.array(bot.table.to_arm(*pick_px))
     away = np.array(bot.table.to_arm(pick_px[0], pick_px[1] - 12.0)) - c0
     away /= np.linalg.norm(away)
-    side = bot._width_grasp(outline, away)
-    if side is not None:
+    side = None if args.standing else bot._width_grasp(outline, away)
+    if args.standing:
+        # The slide-in grip: come down short of the item, on the arm's side, then slide out onto it.
+        item = np.array(bot.table.to_arm(hits[0]["x"], hits[0]["y"]))
+        out_dir = item / np.linalg.norm(item)
+        jaw = np.array([-out_dir[1], out_dir[0]])
+        start = item - out_dir * motion.SLIDE_STANDOFF
+        a, b = bot.table.to_pixel(*start), bot.table.to_pixel(*item)
+        cv2.arrowedLine(plan, (int(a[0]), int(a[1])), (int(b[0]), int(b[1])), (0, 160, 0), 2, tipLength=0.3)
+        for end in (item - jaw * motion.SLIDE_GAP / 2, item + jaw * motion.SLIDE_GAP / 2):
+            u, v = bot.table.to_pixel(*end)
+            cv2.circle(plan, (int(u), int(v)), 6, (0, 0, 255), -1)
+        j0, j1 = bot.table.to_pixel(*(item - jaw * motion.SLIDE_GAP / 2)), bot.table.to_pixel(*(item + jaw * motion.SLIDE_GAP / 2))
+        cv2.line(plan, (int(j0[0]), int(j0[1])), (int(j1[0]), int(j1[1])), (0, 0, 255), 2)
+        cv2.putText(plan, "comes down at the arrow's tail, slides along it, jaws end at the red dots",
+                    (int(a[0]) - 260, int(a[1]) + 34), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 140, 0), 2)
+        pick_px = (hits[0]["x"], hits[0]["y"])            # for a standing item, the model's own point at its foot
+        print(f"plan: slide on from the arm's side; item at {item[0] * 100:.1f} cm out, {item[1] * 100:.1f} cm across; "
+              f"jaws {motion.SLIDE_GAP * 100:.1f} cm apart, {motion.SLIDE_HEIGHT * 100:.0f} cm above the table")
+    elif side is not None:
         middle, gap, vec = side
         marks = (("grip middle", middle, (0, 200, 0)), ("jaw", middle - vec * gap / 2, (0, 0, 255)),
                  ("jaw", middle + vec * gap / 2, (0, 0, 255)))
