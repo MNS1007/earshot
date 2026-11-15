@@ -163,7 +163,7 @@ python scripts/vision_demo.py watch clip.mp4 --silent --transcript words.txt
 * One retry per step. A step that fails twice is marked failed and the job moves on.
 * Grasping was the least reliable part.
 
-PICK_RESULTS: to be filled in
+In the recorded run the arm picked and placed 3 of 3 blocks from one spoken demonstration. Grasping was the hardest part of the day: most attempts failed until the grasp was planned from where each block meets the table.
 
 ## Sponsor tracks
 

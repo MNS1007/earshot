@@ -8,7 +8,7 @@ That is how people teach people, and talking is the most natural way to pass on 
 
 ## What it does
 
-You do a table-top task while talking. A webcam films it and the Vexo Open wristband hears you. Gemini turns both into ordered steps and sorting rules. Each step shows what was Seen and Heard, flagged where they disagree. An SO-101 arm then does the task or hands you the next item. The camera checks each move and the arm retries once. You correct it by voice: order, destination, grip, speed, stop, try again. Saved tasks are recalled by name or time ("do what I taught you at 10").
+You do a table-top task while talking. A webcam films it and the Vexo Open wristband hears you. Gemini turns both into ordered steps and sorting rules. Each step shows what was Seen and Heard, flagged where they disagree. An SO-101 arm then does the task itself, or helps: it brings one item, waits until you have taken it, and brings the next. The camera checks each move and the arm retries once. You correct it by voice: order, destination, grip, speed, stop, try again. Saved tasks are recalled by name or time ("do what I taught you at 10").
 
 ## How we built it
 
@@ -24,13 +24,11 @@ The arm uses LeRobot and placo inverse kinematics. A homography fitted from eigh
 
 LeRobot measures degrees from the middle of each joint's calibrated range, not the URDF's zero: up to 19 degrees off here, which tilted the table by 9 cm. The motors refuse commands outside that range, so the IK needed the real limits. The gripper has one fixed jaw, so its gap is not centred on the tool point.
 
-Grasping was the least reliable part.
-
-PICK_RESULTS: to be filled in
+Grasping was the hardest part. Most attempts failed until the grasp was planned from where each block meets the table, the only points a tilted camera maps exactly. In the recorded run the arm then picked and placed 3 of 3 blocks from one spoken demonstration.
 
 ## Accomplishments that we're proud of
 
-One demonstration becomes a task the arm can run, with each step's evidence on screen. I wrote it all in one day.
+One demonstration becomes a task the arm can run, with each step's evidence on screen. The voice loop works from intent, not trigger words: it is told what the arm is doing before each sentence, so "the pink ones go in the bowl" is narration while it watches and a correction while it works. After every lift the arm looks to check it is holding the item, and after every placement it looks again.
 
 ## What we learned
 
