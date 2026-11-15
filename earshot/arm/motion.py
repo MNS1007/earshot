@@ -33,6 +33,7 @@ CLEARANCE = 0.012            # spare room each side of the item between the open
 GRIP_DEPTH = 0.016           # how far behind the item's near edge the jaws close (half the depth of a small item)
 GRIP_DEPTH_MAX = 0.03        # deepest the jaws close behind the near edge
 NARROW_FACE = 0.045          # an item narrower than this across the view is taken to be end-on to the camera
+LONG_FACE = 0.058            # a silhouette this wide across the view is an item lying long side to the camera
 MAX_GAP = 0.095              # widest fingertip gap at which the swinging jaw still closes near the table
 EMPTY_GRIPPER_READS = 2.0    # what the gripper position reads when it has closed on nothing (seen on every miss today)
 RAKE_STEP_BACK = 0.015       # how far to step back when the fixed jaw comes down on top of the item
@@ -375,8 +376,9 @@ class Arm:
         along = (b - a) / float(np.linalg.norm(b - a))     # the jaws close along the width edge
         spread = np.array([c @ along for c in corners])    # every base corner seen, measured along that edge
         width = float(spread.max() - spread.min())
-        if width >= NARROW_FACE:
-            return None
+        whole = np.array([np.array(self.table.to_arm(u, v)) @ along for u, v in outline_px])
+        if width >= NARROW_FACE or float(whole.max() - whole.min()) >= LONG_FACE:
+            return None                                    # the item's long side faces the camera
         gap = max(width, 0.03) + 2 * CLEARANCE             # part of the edge may be hidden: never plan for under 3 cm
         if gap > MAX_GAP:
             return None
@@ -493,9 +495,11 @@ class Arm:
         self.jaw_deg = None                      # lifting does not need the wrist held at an angle
         self.move_height(ABOVE_TABLE_HOVER)
         self._stage(f"5 lifted, gripper reads {arm.read_gripper(self.robot):.0f}")
-        held = self.look_if_holding() if self.look_if_holding else None
-        if held is None:                         # no camera check available: go by the gripper's own reading
-            held = self.holding_something()
+        # Two witnesses: the gripper's own reading and a camera look. Letting go of an item it has
+        # is the worse mistake, so it only gives up when both say the gripper is empty.
+        felt = self.holding_something()
+        seen = self.look_if_holding() if self.look_if_holding else None
+        held = felt or bool(seen)
         self._stage(f"5b holding check says {'holding' if held else 'empty'}")
         if not held:
             self.jaw_deg = None
