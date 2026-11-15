@@ -1,44 +1,43 @@
-Tagline: An industry expert teaches a robot a task just by demonstrating it once and talking it through. No teleoperation, just human know-how transferred through speech and video.
+Tagline: Vibe coding for robots: An industry expert teaches a robot a task by demonstrating it once and talking it through. No teleoperation, just pure human intelligence transferred through speech and video.
 
 ## Inspiration
 
-Teaching a robot one task today needs a robot-learning engineer and hours of teleoperation: driving the arm by hand, over and over, to record demonstrations. I did exactly that the week before, on this same arm, for a single task. But the people who know what the robot should do are not engineers. While building a previous product I shadowed assistants at dental practices. The assistant is the one who knows which instrument comes next. A new assistant learns by watching once, listening, and being corrected.
+I build software for dental practices, and I have spent time in clinics shadowing how the work is really done. That taught me where robotics gets stuck. The engineers who can build a robot do not know the job. The people who know the job, like the dental assistant who knows which instrument comes next, do not know robotics. Progress needs both in the same room, and that is the bottleneck.
 
-That is how people teach people, and talking is the most natural way to pass on what matters. Vibe coding let anyone build software by describing it. Earshot lets anyone teach a robot by doing the task once and talking it through.
+Today the expert's knowledge reaches the robot in a thin form: hours of teleoperation, or labels on someone else's data. But that is not how experts teach. A dentist training a new assistant shows the task once and talks the whole way through it: what this is, why it goes there, what to watch for. Most of the knowledge is in the talking.
+
+So what if the expert taught the robot directly, the same way?
 
 ## What it does
 
-You do a table-top task while talking. A webcam films it and the Vexo Open wristband hears you. Gemini turns both into ordered steps and sorting rules. Each step shows what was Seen and Heard, flagged where they disagree. An SO-101 arm then does the task itself, or helps: it brings one item, waits until you have taken it, and brings the next. The camera checks each move and the arm retries once. You correct it by voice: order, destination, grip, speed, stop, try again. Saved tasks are recalled by name or time ("do what I taught you at 10").
+The expert does the task once and talks it through. A camera watches and a wristband listens. Earshot turns the video and the words into ordered steps and rules, and shows each step with what it saw and what it heard. The robot then does the task itself, or works alongside: it brings one item, waits until you have taken it, and brings the next. You correct it by voice as it works, in your own words. Lessons are remembered and can be recalled later.
 
-## How we built it
+There is no teleoperation, no training run and no robotics engineer in the loop.
 
-No trained policy, no teleoperation data, no fine-tuning. The model decides what and where. My code turns that into motion.
+## Why now
 
-Models were picked per job from timed runs: gemini-4-argon watches the clip and writes steps and rules (about 27 s). gemini-3.8-flash points at items and checks placements (about 2.5 s). gemini-3.5-flash-lite picks the voice action.
+Three things became good enough at the same time: video understanding in frontier models, real-time speech to text, and agents that can hold context and choose actions. Earshot is what you get when you point all three at a robot.
 
-Voice is a Pipecat pipeline: band audio, Deepgram speech to text, Silero VAD, one LLM tool choice, a POST to the main app.
+## How I built it
 
-The arm uses LeRobot and placo inverse kinematics. A homography fitted from eight marks, which I guided the gripper tip onto, maps camera pixels to the table.
+- **Understanding:** Gemini 4 watches the demonstration with the transcript and writes the steps and rules. A faster Gemini model finds each item in the camera picture and checks every move.
+- **Voice:** a Pipecat pipeline. Wristband audio goes to Deepgram for speech to text, then to a model that is told what the robot is doing right now and picks an action by intent. "The pink ones go in the bowl" is narration while it watches and a correction while it works.
+- **Motion:** camera pixels map to table positions through a homography fitted from marks the gripper was guided onto, \\( (x, y, 1)^\top \sim H\,(u, v, 1)^\top \\), then inverse kinematics on a LeRobot SO-101.
+- **Checking:** after every lift the robot looks to confirm it is holding the item, and after every placement it looks again and retries.
 
-## Challenges we ran into
+## Challenges
 
-LeRobot measures degrees from the middle of each joint's calibrated range, not the URDF's zero: up to 19 degrees off here, which tilted the table by 9 cm. The motors refuse commands outside that range, so the IK needed the real limits. The gripper has one fixed jaw, so its gap is not centred on the tool point.
+Grasping was the hardest part. A tilted camera sees an item's sides, so most of what it sees does not map to the table. Most attempts failed until the grasp was planned only from the points where an item meets the table. In the recorded run the arm then picked and placed 3 of 3 blocks from one spoken demonstration.
 
-Grasping was the hardest part. Most attempts failed until the grasp was planned from where each block meets the table, the only points a tilted camera maps exactly. In the recorded run the arm then picked and placed 3 of 3 blocks from one spoken demonstration.
+The hardware sets the ceiling. This is a small 3D-printed arm with five joints and a gripper, and no sense of force. It can pick things up and put them down. It cannot do tasks that need touch or fine force, and its reach is short.
 
-## Accomplishments that we're proud of
+## What I learned
 
-One demonstration becomes a task the arm can run, with each step's evidence on screen. The voice loop works from intent, not trigger words: it is told what the arm is doing before each sentence, so "the pink ones go in the bowl" is narration while it watches and a correction while it works. After every lift the arm looks to check it is holding the item, and after every placement it looks again.
+Speech carries what a demonstration video cannot: which thing matters, why, and what the rule is. Giving the voice model the robot's current state mattered more than any prompt wording.
 
-## What we learned
+## What's next
 
-A tilted camera sees an item's sides. Only the points where it meets the table map exactly, so the grasp is planned from those. A nudged camera is corrected by re-finding the calibration marks and voting on one shift.
-
-## What's next for Earshot
-
-A more reliable grasp, more reach, and items without a clear colour. Today it does pick and place only, not new skills such as writing or inserting a plug.
-
-The larger idea: every lesson leaves a video, a transcript, the steps, the corrections and a camera check of each move. That is labelled data collected as a side effect of use. It could train a policy for the same task far faster than recording teleoperation by hand, so the person who knows the job teaches it once and the robot keeps getting better at it.
+Two groups can use this. Industry experts, who have the knowledge and can now teach a robot themselves. And robotics labs, who no longer need to send someone to shadow a clinic: the expert teaches the robot, and every lesson leaves a video, a transcript, the steps, the corrections and a check of each move. That is labelled data collected as a side effect of normal work, ready to train better policies for the same task.
 
 ## Built with
 
