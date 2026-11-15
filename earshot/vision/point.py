@@ -167,31 +167,56 @@ AXIS_SCHEMA = {
 }
 
 
-def contact_outline(image_bgr: np.ndarray, x: float, y: float) -> np.ndarray | None:
-    """Pixels where a coloured item meets the table, left to right, as an (N, 2) array.
+def _item_mask(image_bgr: np.ndarray, u: int, v: int) -> np.ndarray | None:
+    """The blob of pixels belonging to the item at (u, v), or None if it cannot be told from the table.
 
-    The item's coloured blob around (x, y) is found by its hue. In every image column the
-    blob's lowest pixel is taken: seen from above at any tilt, that lower edge of the
-    silhouette is where the item stands on the table, so unlike the rest of the blob these
-    pixels really are table points and can be mapped by the table calibration.
-    Returns None when (x, y) is not on a clearly coloured item (white, grey, black).
+    A brightly coloured item is found by its hue. Anything else (black, grey, wood) is found by
+    how much it differs from the table around it, taking the table's colour from a ring of
+    pixels a little way out from the point. An item the same colour as the table gives None.
     """
     h, w = image_bgr.shape[:2]
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
-    u, v = int(np.clip(x, 3, w - 4)), int(np.clip(y, 3, h - 4))
     near = hsv[v - 3: v + 4, u - 3: u + 4].reshape(-1, 3)
-    near = near[near[:, 1] > 80]
-    if len(near) < 10:
-        return None
-    dh = np.abs(hsv[:, :, 0].astype(np.int16) - int(np.median(near[:, 0])))
-    dh = np.minimum(dh, 180 - dh)
-    mask = ((dh < 12) & (hsv[:, :, 1] > 80) & (hsv[:, :, 2] > 50)).astype(np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    vivid = near[near[:, 1] > 80]
+    if len(vivid) >= 10:
+        dh = np.abs(hsv[:, :, 0].astype(np.int16) - int(np.median(vivid[:, 0])))
+        dh = np.minimum(dh, 180 - dh)
+        mask = (dh < 12) & (hsv[:, :, 1] > 80) & (hsv[:, :, 2] > 50)
+    else:
+        lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB).astype(np.int16)
+        r0, r1 = 70, 110                                    # the ring the table colour is read from
+        x0, x1, y0, y1 = max(0, u - r1), min(w, u + r1), max(0, v - r1), min(h, v + r1)
+        yy, xx = np.mgrid[y0:y1, x0:x1]
+        ring = ((xx - u) ** 2 + (yy - v) ** 2 >= r0 * r0) & ((xx - u) ** 2 + (yy - v) ** 2 <= r1 * r1)
+        table = np.median(lab[y0:y1, x0:x1][ring], axis=0)
+        differs = np.linalg.norm(lab - table, axis=2)
+        if differs[v, u] < 28:
+            return None                                     # the item looks like the table here
+        mask = np.zeros((h, w), bool)
+        mask[y0:y1, x0:x1] = differs[y0:y1, x0:x1] > 28     # only near the point: the rest of the scene is not the item
+    mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     _, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     label = labels[v, u]
     if label == 0 or not 150 <= stats[label, cv2.CC_STAT_AREA] <= 0.08 * h * w:
         return None
-    ys, xs = np.nonzero(labels == label)
+    return labels == label
+
+
+def contact_outline(image_bgr: np.ndarray, x: float, y: float) -> np.ndarray | None:
+    """Pixels where an item meets the table, left to right, as an (N, 2) array.
+
+    The item's blob around (x, y) is found (see _item_mask). In every image column the blob's
+    lowest pixel is taken: seen from above at any tilt, that lower edge of the silhouette is
+    where the item stands on the table, so unlike the rest of the blob these pixels really are
+    table points and can be mapped by the table calibration. Returns None when the item
+    cannot be told from the table.
+    """
+    h, w = image_bgr.shape[:2]
+    u, v = int(np.clip(x, 3, w - 4)), int(np.clip(y, 3, h - 4))
+    blob = _item_mask(image_bgr, u, v)
+    if blob is None:
+        return None
+    ys, xs = np.nonzero(blob)
     cols = np.arange(xs.min(), xs.max() + 1)
     lowest = np.full(len(cols), -1.0)
     np.maximum.at(lowest, xs - xs.min(), ys.astype(float))

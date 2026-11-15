@@ -27,6 +27,7 @@ from earshot.vision import gemini, point, watch
 
 logging.getLogger("lerobot.robots.utils").setLevel(logging.ERROR)   # its per-command clamp notices flood the terminal
 
+TAKEN_BELOW = 9.0        # mean difference (0-255) under which a place looks the same as before the item was put there
 TALL = ("cup", "glass", "mug", "bottle", "box", "bin", "tub", "jar", "container", "basket")   # walls too high for the low drop
 RECORD_FPS = 5
 
@@ -45,7 +46,7 @@ class Earshot:
         self.recording: Optional[dict] = None       # {"name", "frames", "words", "t0"}
         self.pending: Optional[tuple] = None        # a job asked for while the steps were still being worked out
         self.redo = False                           # the person stopped the move in progress: do that step again
-        self.handover_ref: Optional[np.ndarray] = None
+        self.go_on = threading.Event()              # the person said to carry on while the arm was waiting for them
 
     @staticmethod
     def _table_or_none():
@@ -126,7 +127,8 @@ class Earshot:
                 self.paused.clear()
                 state.resume()
             else:
-                state.robot("Already on it.")
+                self.go_on.set()                      # if it was waiting for the person, this means "carry on"
+                state.robot("Carrying on.")
             return
         self.stop_job.clear()
         self.paused.clear()
@@ -316,21 +318,38 @@ class Earshot:
             state.set_step_status(step.n, "done" if done else "failed")
 
     def help(self) -> None:
-        """Hand over the next item each time the person takes the last one."""
-        spot = self._handover_px()
-        self.handover_ref = self._patch(self.cam.fresh_frame(), spot)
+        """Work alongside the person: do one step, wait until they have taken the item, then do the next.
+
+        Each item goes where the lesson put it (a bowl, a tray, a spot on the table); if the
+        lesson gave no place, it goes to the handover spot. Before placing, the arm remembers
+        how that place looks. Once the item is there, it waits until the place looks as it did
+        before, which means the person has taken the item, or until they tell it to go on.
+        """
         while (step := self._next_todo()) is not None:
             if not self._gate():
                 return
             state.set_step_status(step.n, "doing")
-            done = self._do_step(step, spot, drop=False, verify=lambda: self._spot_state(spot, want_item=True))
+            frame = self.cam.fresh_frame()
+            place_px = self._destination_px(step, frame) or self._handover_px()
+            before = self._patch(frame, place_px)
+            into = step.dest_kind == "container"
+            done = self._do_step(step, place_px, drop=into, verify=lambda s=step: self._placed(s.item, s.destination))
             if not done:
                 state.set_step_status(step.n, "failed")
                 continue
-            state.robot(f"{step.item} is ready for you. It goes {step.destination}.")
-            while self._gate() and self._spot_state(spot, want_item=False)[0] is False:
-                time.sleep(0.3)                       # wait until the person takes it
             state.set_step_status(step.n, "done")
+            if self._next_todo() is None:
+                break
+            state.robot(f"The {step.item} is in the {step.destination}. Take it and I will bring the next one.")
+            self.go_on.clear()
+            quiet = 0
+            while self._gate() and not self.go_on.is_set():
+                same = float(np.mean(np.abs(self._patch(self.cam.fresh_frame(), place_px) - before))) < TAKEN_BELOW
+                quiet = quiet + 1 if same else 0
+                if quiet >= 3:                        # looks as it did before, for about a second: it has been taken
+                    state.check(f"The {step.destination} is empty again: you took the {step.item}.")
+                    break
+                time.sleep(0.35)
         state.robot("That was the last one.")
 
     def _handover_px(self) -> tuple[float, float]:
@@ -342,14 +361,6 @@ class Earshot:
     def _patch(frame, px, r: int = 45) -> np.ndarray:
         u, v = int(px[0]), int(px[1])
         return cv2.GaussianBlur(frame[max(0, v - r): v + r, max(0, u - r): u + r], (5, 5), 0).astype(np.int16)
-
-    def _spot_state(self, spot, want_item: bool) -> tuple[bool, str]:
-        """Compare the handover spot with how it looked empty."""
-        now = self._patch(self.cam.fresh_frame(), spot)
-        changed = float(np.mean(np.abs(now - self.handover_ref))) > 12.0
-        if want_item:
-            return changed, "the item is on the handover spot" if changed else "the handover spot is still empty"
-        return (not changed), "taken" if not changed else "still there"
 
     # ------------------------------------------------------------------ actions
     def handle(self, a: dict) -> None:
@@ -381,6 +392,7 @@ class Earshot:
             state.pause()
         elif act == "resume":
             self.paused.clear()
+            self.go_on.set()
             state.resume()
         elif act == "load_task":
             found = store.find_task(args.get("query", "the last one"), time.time())

@@ -275,6 +275,8 @@ seen it", "I'm done showing you"). Do not start the task or load another one whi
 is start_teaching().
 - The arm is working: speech that disagrees with what it is doing or about to do is a correction (order, \
 destination, grip, speed). "Stop", "wait", "hold on" is pause(). "Again", "that slipped, redo it" is retry_last().
+- The arm is helping, handing over one item at a time: it waits for the person to take each one. If they \
+tell it to carry on in any words ("got it, next", "okay bring the next one", "keep going") choose resume().
 - The arm is paused: a request to continue is resume().
 - At any time, a reference to an earlier lesson ("do what I showed you this morning") is load_task().
 
