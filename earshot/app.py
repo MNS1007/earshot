@@ -342,13 +342,25 @@ class Earshot:
                 break
             state.robot(f"The {step.item} is in the {step.destination}. Take it and I will bring the next one.")
             self.go_on.clear()
-            quiet = 0
+            quiet, gone, looked = 0, 0, time.time()
             while self._gate() and not self.go_on.is_set():
                 same = float(np.mean(np.abs(self._patch(self.cam.fresh_frame(), place_px) - before))) < TAKEN_BELOW
                 quiet = quiet + 1 if same else 0
                 if quiet >= 3:                        # looks as it did before, for about a second: it has been taken
                     state.check(f"The {step.destination} is empty again: you took the {step.item}.")
                     break
+                # A second witness, for when the place itself got nudged or the light changed so it
+                # no longer looks as before: ask the camera model whether the item is still there.
+                if time.time() - looked > 2.0:
+                    looked = time.time()
+                    try:
+                        still_there, _ = self._placed(step.item, step.destination)
+                    except Exception:
+                        still_there = True
+                    gone = 0 if still_there else gone + 1
+                    if gone >= 2:                     # two looks in a row: not a hand passing over it
+                        state.check(f"The {step.item} is no longer in the {step.destination}: you took it.")
+                        break
                 time.sleep(0.35)
         state.robot("That was the last one.")
 
