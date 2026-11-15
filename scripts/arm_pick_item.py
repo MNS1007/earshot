@@ -23,6 +23,7 @@ ap.add_argument("--tall", action="store_true", help="the container is tall (a cu
 ap.add_argument("--speed", type=float, default=0.3)
 ap.add_argument("--grip", type=float, default=0.6)
 ap.add_argument("--check", action="store_true")
+ap.add_argument("--standing", action="store_true", help="a tall item standing up: slide onto it from the side")
 args = ap.parse_args()
 
 cam = Camera().start()
@@ -119,7 +120,7 @@ try:
     input("Press Enter to move, Ctrl+C to cancel...")
     tall = args.tall or any(w in (args.to or "").lower() for w in ("cup", "box", "bin", "tub", "jar", "container"))
     held = bot.pick_place(pick_px, place_px, drop=bool(args.to), tall=tall, long_side_px=long_side,
-                          outline_px=outline)
+                          outline_px=outline, standing=args.standing)
     print("gripper felt the item: carried it" if held else "gripper closed on nothing: missed")
     if args.check:
         r = point.check_placed(cam.fresh_frame(), args.item, args.to or "the table near the front edge")

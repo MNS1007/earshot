@@ -36,6 +36,10 @@ NARROW_FACE = 0.045          # an item narrower than this across the view is tak
 LONG_FACE = 0.058            # a silhouette this wide across the view is an item lying long side to the camera
 MAX_GAP = 0.095              # widest fingertip gap at which the swinging jaw still closes near the table
 EMPTY_GRIPPER_READS = 2.0    # what the gripper position reads when it has closed on nothing (seen on every miss today)
+SLIDE_GAP = 0.045            # fingertip gap for sliding onto a standing item: part open, as for something slim
+SLIDE_HEIGHT = 0.03          # fingertip height while sliding on: about the middle of a small standing item
+SLIDE_STANDOFF = 0.05        # how far short of the item the gripper comes down before sliding out to it
+SLIDE_PAST = 0.004           # how far past the item's centre the slide ends
 RAKE_STEP_BACK = 0.015       # how far to step back when the fixed jaw comes down on top of the item
 ON_TABLE = 0.014             # a fingertip measured lower than this is on the table, not on an item
 RAKE_GAP = 0.085             # fingertip gap while coming down: about the widest at which the swinging jaw still reaches the table
@@ -387,9 +391,7 @@ class Arm:
         inward = np.array([-along[1], along[0]])       # square to it, into the item
         if inward @ away < 0:
             inward = -inward
-        # How far in from that edge to close: the far side cannot be seen, so go a little over half
-        # the width in. That is the middle of a round item and well onto a long one.
-        middle = (a + b) / 2.0 + inward * min(0.6 * max(width, 0.02), GRIP_DEPTH_MAX)
+        middle = (a + b) / 2.0 + inward * min(width, GRIP_DEPTH_MAX)
         best = None
         for vec in (along, -along):                    # the gap can open to either side: take the easier wrist turn
             fixed = middle - vec * gap / 2.0
@@ -420,7 +422,51 @@ class Arm:
                                     jaw_deg=float(np.rad2deg(np.arctan2(away[1], away[0]))))
         return (fixed, RAKE_GAP, away) if ok and err < 0.008 else None
 
-    def pick_place(self, pick_px, place_px, drop: bool, tall: bool = False, long_side_px=None, outline_px=None) -> bool:
+    def _slide_in(self, x: float, y: float) -> None:
+        """Grip a tall, standing item round its middle by sliding in from the side. Ends with the gripper closed.
+
+        Coming straight down on a standing item knocks it over, and gripping it at the foot lets
+        it tip. So the gripper comes down in the clear space between the arm and the item, part
+        open, at the item's mid height, with its jaws either side of the line to the item. It
+        then slides straight out along that line until the item is between the jaws, and closes.
+        (x, y) is where the item stands, in the arm's frame.
+        """
+        out = np.array([x, y]) / float(np.hypot(x, y))          # from the arm's base out to the item
+        best = None
+        for vec in (np.array([-out[1], out[0]]), np.array([out[1], -out[0]])):   # jaws open across that line, either way
+            start = np.array([x, y]) - out * SLIDE_STANDOFF - vec * SLIDE_GAP / 2.0
+            q, err, _, ok = kin.ik_down(start[0], start[1], self.table.table_z + SLIDE_HEIGHT,
+                                        jaw_deg=float(np.rad2deg(np.arctan2(vec[1], vec[0]))))
+            if ok and err < 0.008 and (best is None or abs(q[4]) < best[0]):
+                best = (abs(q[4]), vec)
+        if best is None:
+            raise ReachError("Cannot get in front of that item to slide the gripper onto it. Move it a little further out.")
+        vec = best[1]
+        across = np.array([-vec[1], vec[0]])
+
+        def fixed_jaw(middle: np.ndarray) -> np.ndarray:        # where to steer so the gap is centred on `middle`
+            return middle - vec * SLIDE_GAP / 2.0 - vec * TIP_ALONG - across * TIP_LEFT
+
+        self.jaw_deg = float(np.rad2deg(np.arctan2(vec[1], vec[0])))
+        self._closed = 3.0 * (1.0 - self.grip)
+        self.go_ready()
+        self.set_gripper(kin.gripper_for_gap(SLIDE_GAP), wait=0.2)
+        start = fixed_jaw(np.array([x, y]) - out * SLIDE_STANDOFF)
+        self.move_above_aligned(start[0], start[1])
+        self._stage("1 above the space in front of the item")
+        self.move_height(SLIDE_HEIGHT)
+        self._stage("2 down in front, at the item's mid height")
+        q = arm.read_joints(self.robot)
+        for along in np.arange(SLIDE_STANDOFF - 0.01, -SLIDE_PAST - 0.001, -0.01):   # slide out 1 cm at a time
+            p = fixed_jaw(np.array([x, y]) - out * along)
+            q = self._solve(p[0], p[1], SLIDE_HEIGHT, seed=q)
+            self.move_joints(q)
+            self._at = (float(p[0]), float(p[1]), SLIDE_HEIGHT)
+        self._stage("3 slid on: the item should be between the jaws")
+        self.set_gripper(self._closed)
+
+    def pick_place(self, pick_px, place_px, drop: bool, tall: bool = False, long_side_px=None, outline_px=None,
+                   standing: bool = False) -> bool:
         """Pick the item at `pick_px` and put it at `place_px` (camera pixels).
 
         `pick_px` should be where the item's near side meets the table, which is what the
@@ -437,6 +483,9 @@ class Arm:
         if far > MAX_PLACE_REACH:                # a big container: its middle is out of reach, so release as far
             qx, qy = qx * MAX_PLACE_REACH / far, qy * MAX_PLACE_REACH / far   # toward it as the arm can go
 
+        if standing:
+            self._slide_in(px, py)
+            return self._lift_carry_release(qx, qy, drop, tall)
         away = np.array(self.table.to_arm(pick_px[0], pick_px[1] - 12.0)) - np.array([px, py])
         away = away / np.linalg.norm(away)        # along the table, from the camera toward the item
         left = np.array([-away[1], away[0]])      # along the table, across the camera's view
@@ -493,6 +542,10 @@ class Arm:
             px, py = np.array([px, py]) - away * RAKE_STEP_BACK
             self.move_xyz(px, py, ABOVE_TABLE_HOVER)
         self.set_gripper(closed)
+        return self._lift_carry_release(qx, qy, drop, tall)
+
+    def _lift_carry_release(self, qx: float, qy: float, drop: bool, tall: bool) -> bool:
+        """With the gripper closed on an item: lift, check it is held, carry it and let go. Returns False if empty."""
         self._stage(f"4 closed, gripper reads {arm.read_gripper(self.robot):.0f}")
         self.jaw_deg = None                      # lifting does not need the wrist held at an angle
         self.move_height(ABOVE_TABLE_HOVER)

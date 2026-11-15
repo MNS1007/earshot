@@ -177,7 +177,7 @@ def _item_mask(image_bgr: np.ndarray, u: int, v: int) -> np.ndarray | None:
     h, w = image_bgr.shape[:2]
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
     near = hsv[v - 3: v + 4, u - 3: u + 4].reshape(-1, 3)
-    vivid = near[(near[:, 1] > 80) & (near[:, 2] > 70)]      # dark pixels have a meaningless hue: not "coloured"
+    vivid = near[(near[:, 1] > 80) & (near[:, 2] > 50)]      # dark pixels have a meaningless hue: not "coloured"
     if len(vivid) >= 10:
         dh = np.abs(hsv[:, :, 0].astype(np.int16) - int(np.median(vivid[:, 0])))
         dh = np.minimum(dh, 180 - dh)
