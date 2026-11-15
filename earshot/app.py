@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import threading
 import time
 from typing import Optional
@@ -27,6 +28,8 @@ from earshot.vision import gemini, point, watch
 
 logging.getLogger("lerobot.robots.utils").setLevel(logging.ERROR)   # its per-command clamp notices flood the terminal
 
+DONE_TEACHING = re.compile(r"\b(that'?s it|that is it|i'?m done|i am done|okay,? done|all done|that'?s the task|"
+                           r"that is the task|finished teaching|stop watching)\b", re.I)
 TALL = ("cup", "glass", "mug", "bottle", "box", "bin", "tub", "jar", "container", "basket")   # walls too high for the low drop
 RECORD_FPS = 5
 
@@ -356,9 +359,17 @@ class Earshot:
         act, args, said = a["action"], a.get("args", {}), a.get("said", "")
         task = state.task
         if act == "transcript":
-            state.set_transcript(args.get("text", ""), final=True)
+            text = args.get("text", "")
+            state.set_transcript(text, final=True)
             if self.recording:
-                self.recording["words"].append(args.get("text", ""))
+                if DONE_TEACHING.search(text):        # said in plain words: no need to wait for the voice model
+                    self.stop_teaching()
+                else:
+                    self.recording["words"].append(text)
+        elif self.recording and act not in ("stop_teaching", "pause"):
+            # While being shown a task, everything said is narration. "Put the pink ones in the
+            # bowl" describes the task; it is not an order to start, so nothing else is acted on.
+            return
         elif act in ("start_teaching",):
             self.start_teaching(args.get("name", ""))
         elif act == "stop_teaching":
