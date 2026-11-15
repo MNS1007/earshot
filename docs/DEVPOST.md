@@ -1,4 +1,4 @@
-Tagline: Vibe coding for robots. The person who knows the job shows it once and talks it through. No teleoperation, no training run, no robotics engineer.
+Tagline: An industry expert teaches a robot a task just by demonstrating it once and talking it through. No teleoperation, just human know-how transferred through speech and video.
 
 ## Inspiration
 
