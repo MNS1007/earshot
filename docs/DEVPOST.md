@@ -10,18 +10,18 @@ So what if the expert taught the robot directly, the same way?
 
 ## What it does
 
-The expert does the task once and talks it through. A camera watches and the Vexo band on their wrist listens. Earshot turns the video and the words into ordered steps and rules, and shows each step with what it saw and what it heard. The robot then does the task itself, or works alongside: it brings one item, waits until you have taken it, and brings the next. You correct it by voice as it works, in your own words. Lessons are remembered and can be recalled later.
+The expert does the task once and talks it through. A camera watches and the Vexo Band on their wrist listens. Earshot turns the video and the words into ordered steps and rules, and shows each step with what it saw and what it heard. The robot then does the task itself, or works alongside: it brings one item, waits until you have taken it, and brings the next. You correct it by voice as it works, in your own words. Lessons are remembered and can be recalled later.
 
 There is no teleoperation, no training run and no robotics engineer in the loop.
 
 ## Why now
 
-Three things became good enough at the same time: video understanding in frontier models, real-time speech to text, and agents that can hold context and choose actions. And a wearable like the Vexo band puts a microphone on the expert all day, hands free, which is exactly where the teaching happens. Earshot is what you get when you point all of that at a robot.
+Three things became good enough at the same time: video understanding in frontier models, real-time speech to text, and agents that can hold context and choose actions. And a wearable like the Vexo Band puts a microphone on the expert all day, hands free, which is exactly where the teaching happens. Earshot is what you get when you point all of that at a robot.
 
 ## How I built it
 
 - **Understanding:** Gemini 4 watches the demonstration with the transcript and writes the steps and rules. A faster Gemini model finds each item in the camera picture and checks every move.
-- **Voice:** the Vexo band is the robot's ears. Its live microphone audio feeds a Pipecat pipeline: Deepgram for speech to text, then to a model that is told what the robot is doing right now and picks an action by intent. "The pink ones go in the bowl" is narration while it watches and a correction while it works.
+- **Voice:** the Vexo Band is the robot's ears. Its live microphone audio feeds a Pipecat pipeline: Deepgram for speech to text, then to a model that is told what the robot is doing right now and picks an action by intent. "The pink ones go in the bowl" is narration while it watches and a correction while it works.
 - **Motion:** camera pixels map to table positions through a homography fitted from marks the gripper was guided onto, \\( (x, y, 1)^\top \sim H\,(u, v, 1)^\top \\), then inverse kinematics on a LeRobot SO-101.
 - **Checking:** after every lift the robot looks to confirm it is holding the item, and after every placement it looks again and retries.
 
@@ -41,4 +41,4 @@ Two groups can use this. Industry experts, who have the knowledge and can now te
 
 ## Built with
 
-Python, Gemini 4, Pipecat, Deepgram, Silero VAD, LeRobot, placo, OpenCV, FastAPI, SO-101, Vexo Open band
+Python, Gemini 4, Pipecat, Deepgram, Silero VAD, LeRobot, placo, OpenCV, FastAPI, SO-101, Vexo Band
