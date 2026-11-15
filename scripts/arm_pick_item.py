@@ -35,9 +35,10 @@ try:
     hits = point.point_at(frame, [args.item])
     if not hits:
         raise SystemExit(f'The camera cannot see "{args.item}".')
-    pick_px = point.near_edge(frame, hits[0]["x"], hits[0]["y"])
+    found = (hits[0]["x"], hits[0]["y"])                  # the model's own point on the item
+    pick_px = point.near_edge(frame, *found)
     long_side = None
-    outline = point.contact_outline(frame, hits[0]["x"], hits[0]["y"])
+    outline = point.contact_outline(frame, *found)
     print("outline of where it meets the table:", "traced" if outline is not None else "not found (no clear colour)")
     print(f"model pointed at ({hits[0]['x']:.0f}, {hits[0]['y']:.0f}); its near edge on the table is at "
           f"({pick_px[0]:.0f}, {pick_px[1]:.0f})")
@@ -59,7 +60,7 @@ try:
     side = None if args.standing else bot._width_grasp(outline, away)
     if args.standing:
         # The slide-in grip: come down short of the item, on the arm's side, then slide out onto it.
-        item = np.array(bot.table.to_arm(hits[0]["x"], hits[0]["y"]))
+        item = np.array(bot.table.to_arm(*found))
         out_dir = item / np.linalg.norm(item)
         jaw = np.array([-out_dir[1], out_dir[0]])
         start = item - out_dir * motion.SLIDE_STANDOFF
@@ -72,7 +73,7 @@ try:
         cv2.line(plan, (int(j0[0]), int(j0[1])), (int(j1[0]), int(j1[1])), (0, 0, 255), 2)
         cv2.putText(plan, "comes down at the arrow's tail, slides along it, jaws end at the red dots",
                     (int(a[0]) - 260, int(a[1]) + 34), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 140, 0), 2)
-        pick_px = (hits[0]["x"], hits[0]["y"])            # for a standing item, the model's own point at its foot
+        pick_px = found                                   # for a standing item, the model's own point at its foot
         print(f"plan: slide on from the arm's side; item at {item[0] * 100:.1f} cm out, {item[1] * 100:.1f} cm across; "
               f"jaws {motion.SLIDE_GAP * 100:.1f} cm apart, {motion.SLIDE_HEIGHT * 100:.0f} cm above the table")
     elif side is not None:
