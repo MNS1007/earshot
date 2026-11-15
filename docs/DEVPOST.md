@@ -1,4 +1,4 @@
-Tagline: Teach a robot arm a table-top task by doing it once while you talk, then correct it by voice.
+Tagline: Vibe coding for robots. The person who knows the job shows it once and talks it through. No teleoperation, no training run, no robotics engineer.
 
 ## Inspiration
 
