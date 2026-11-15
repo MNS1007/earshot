@@ -177,7 +177,7 @@ def _item_mask(image_bgr: np.ndarray, u: int, v: int) -> np.ndarray | None:
     h, w = image_bgr.shape[:2]
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
     near = hsv[v - 3: v + 4, u - 3: u + 4].reshape(-1, 3)
-    vivid = near[near[:, 1] > 80]
+    vivid = near[(near[:, 1] > 80) & (near[:, 2] > 70)]      # dark pixels have a meaningless hue: not "coloured"
     if len(vivid) >= 10:
         dh = np.abs(hsv[:, :, 0].astype(np.int16) - int(np.median(vivid[:, 0])))
         dh = np.minimum(dh, 180 - dh)
@@ -190,14 +190,19 @@ def _item_mask(image_bgr: np.ndarray, u: int, v: int) -> np.ndarray | None:
         ring = ((xx - u) ** 2 + (yy - v) ** 2 >= r0 * r0) & ((xx - u) ** 2 + (yy - v) ** 2 <= r1 * r1)
         table = np.median(lab[y0:y1, x0:x1][ring], axis=0)
         differs = np.linalg.norm(lab - table, axis=2)
-        if differs[v, u] < 28:
-            return None                                     # the item looks like the table here
         mask = np.zeros((h, w), bool)
         mask[y0:y1, x0:x1] = differs[y0:y1, x0:x1] > 28     # only near the point: the rest of the scene is not the item
+        if not mask[v, u]:
+            # The point is often on the table right at the item's foot. Step onto the item if it is within reach.
+            near_y, near_x = np.nonzero(mask[max(0, v - 14): v + 15, max(0, u - 14): u + 15])
+            if len(near_y) == 0:
+                return None                                 # nothing here stands out from the table
+            k = int(np.argmin((near_y - 14) ** 2 + (near_x - 14) ** 2))
+            v, u = max(0, v - 14) + int(near_y[k]), max(0, u - 14) + int(near_x[k])
     mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     _, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     label = labels[v, u]
-    if label == 0 or not 150 <= stats[label, cv2.CC_STAT_AREA] <= 0.08 * h * w:
+    if label == 0 or not 60 <= stats[label, cv2.CC_STAT_AREA] <= 0.08 * h * w:
         return None
     return labels == label
 

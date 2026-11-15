@@ -387,7 +387,9 @@ class Arm:
         inward = np.array([-along[1], along[0]])       # square to it, into the item
         if inward @ away < 0:
             inward = -inward
-        middle = (a + b) / 2.0 + inward * min(width, GRIP_DEPTH_MAX)
+        # How far in from that edge to close: the far side cannot be seen, so go a little over half
+        # the width in. That is the middle of a round item and well onto a long one.
+        middle = (a + b) / 2.0 + inward * min(0.6 * max(width, 0.02), GRIP_DEPTH_MAX)
         best = None
         for vec in (along, -along):                    # the gap can open to either side: take the easier wrist turn
             fixed = middle - vec * gap / 2.0
