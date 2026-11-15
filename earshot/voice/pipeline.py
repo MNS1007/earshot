@@ -61,17 +61,56 @@ class FrameCounter(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+STATE_TAG = "[What the robot is doing right now, not something the person said]"
+
+
+async def robot_state_note() -> Optional[str]:
+    """One short paragraph on what the arm is doing and what it has been taught, from the main app.
+
+    The voice model reads this before every piece of speech, so the same words can mean
+    different things at different moments: "the pink ones go in the bowl" is narration while
+    the arm is watching and a correction while it is working.
+    """
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=0.5) as client:
+            st = (await client.get(actions.post_url().replace("/api/voice", "/api/state"))).json()
+    except Exception:
+        return None
+    doing = {"idle": "waiting; nothing is running",
+             "teaching": "WATCHING A DEMONSTRATION: the person is showing the task and describing it as they go",
+             "understanding": "working out the steps from the demonstration it has just watched",
+             "helping": "helping: handing the person the next item of the task",
+             "doing": "doing the task by itself",
+             "paused": "paused part-way through the task"}.get(st.get("mode"), str(st.get("mode")))
+    task = st.get("task")
+    if task and task.get("steps"):
+        steps = "; ".join(f"{x['n']}. {x['item']} to {x['destination']} ({x['status']})" for x in task["steps"])
+        rules = "; ".join(f"{r['when']} goes to {r['destination']}" for r in task.get("rules", []))
+        taught = f'It has been taught "{task.get("name", "a task")}": {steps}.' + (f" Rules: {rules}." if rules else "")
+    else:
+        taught = "It has not been taught a task yet."
+    return f"{STATE_TAG} The arm is {doing}. {taught}"
+
+
 class TurnGate(FrameProcessor):
-    """Just before the LLM: notes when the request left (for the timing that is printed) and
-    cuts the context down to the last few turns."""
+    """Just before the LLM: tells it what the arm is doing right now, notes when the request left
+    (for the timing that is printed) and cuts the context down to the last few turns."""
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, LLMContextFrame):
-            messages = list(frame.context.get_messages())     # a copy: set_messages changes the list in place
+            messages = [m for m in frame.context.get_messages()     # drop the previous turn's state note
+                        if not (isinstance(m, dict) and str(m.get("content", "")).startswith(STATE_TAG))]
             users = [i for i, m in enumerate(messages) if isinstance(m, dict) and m.get("role") == "user"]
             if len(users) > KEEP_TURNS:
-                frame.context.set_messages(messages[users[-KEEP_TURNS]:])
+                messages = messages[users[-KEEP_TURNS]:]
+                users = [i for i, m in enumerate(messages) if isinstance(m, dict) and m.get("role") == "user"]
+            note = await robot_state_note()
+            if note and users:
+                messages.insert(users[-1], {"role": "user", "content": note})   # just before what was said
+            frame.context.set_messages(messages)
             actions.DISPATCH.begin_turn()
         await self.push_frame(frame, direction)
 
