@@ -13,7 +13,7 @@ Teaching a robot a task today takes two things most workplaces do not have.
 - **Robot-learning skill.** Someone has to set up cameras, record demonstrations, label them, train a policy and debug it.
 - **Teleoperation.** The demonstrations are recorded by driving the arm by hand, many times over. It is slow and physically tiring. The week before building this I spent hours doing exactly that for one task on this same arm.
 
-Meanwhile the knowledge of what the robot should do sits with someone else: the person who does the job. In a dental practice it is the assistant who knows which instrument comes next and where it goes. That person is the expert, and they are not a robotics engineer.
+Meanwhile the knowledge of what the robot should do sits with someone else: the person who does the job. That person is the expert, and they are not a robotics engineer.
 
 So the way to put robots within reach of everyone is to let the expert teach the way they already teach a new colleague: do the task once, and talk while doing it. Speech carries what a video cannot: which thing matters, why it goes there, what the rule is. Showing carries what speech leaves out. Earshot takes both, and a general model fills in the rest.
 

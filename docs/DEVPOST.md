@@ -2,9 +2,9 @@ Tagline: Vibe coding for robots: An industry expert teaches a robot a task by de
 
 ## Inspiration
 
-I build software for dental practices, and I have spent time in clinics shadowing how the work is really done. That taught me where robotics gets stuck. The engineers who can build a robot do not know the job. The people who know the job, like the dental assistant who knows which instrument comes next, do not know robotics. Progress needs both in the same room, and that is the bottleneck.
+Robotics gets stuck in a particular place. The engineers who can build a robot do not know the job. The people who know the job do not know robotics. Progress needs both in the same room, and that is the bottleneck.
 
-Today the expert's knowledge reaches the robot in a thin form: hours of teleoperation, or labels on someone else's data. But that is not how experts teach. A dentist training a new assistant shows the task once and talks the whole way through it: what this is, why it goes there, what to watch for. Most of the knowledge is in the talking.
+Today the expert's knowledge reaches the robot in a thin form: hours of teleoperation, or labels on someone else's data. But that is not how experts teach. Someone training a new colleague shows the task once and talks the whole way through it: what this is, why it goes there, what to watch for. Most of the knowledge is in the talking.
 
 So what if the expert taught the robot directly, the same way?
 
@@ -37,7 +37,7 @@ Speech carries what a demonstration video cannot: which thing matters, why, and 
 
 ## What's next
 
-Two groups can use this. Industry experts, who have the knowledge and can now teach a robot themselves. And robotics labs, who no longer need to send someone to shadow a clinic: the expert teaches the robot, and every lesson leaves a video, a transcript, the steps, the corrections and a check of each move. That is labelled data collected as a side effect of normal work, ready to train better policies for the same task.
+Two groups can use this. Industry experts, who have the knowledge and can now teach a robot themselves. And robotics labs, who no longer need to send someone to shadow a workplace: the expert teaches the robot, and every lesson leaves a video, a transcript, the steps, the corrections and a check of each move. That is labelled data collected as a side effect of normal work, ready to train better policies for the same task.
 
 ## Built with
 
