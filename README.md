@@ -2,7 +2,7 @@
 
 Earshot lets you teach a robot arm a table-top task by doing it once while you talk.
 
-A webcam films the table. A wristband (the Vexo Open band) hears you. A Gemini model turns the clip and your words into ordered steps and sorting rules. An SO-101 arm then does the task itself or hands you the next item, checks each result with the camera, and takes corrections by voice.
+A webcam films the table. A microphone hears you: the laptop's own, a headset, a lapel mic or a wearable. A Gemini model turns the clip and your words into ordered steps and sorting rules. An SO-101 arm then does the task itself or hands you the next item, checks each result with the camera, and takes corrections by voice.
 
 There is no trained policy, no teleoperation data and no fine-tuning. The model decides what to move and where. Our code turns that into motion.
 
@@ -11,7 +11,7 @@ There is no trained policy, no teleoperation data and no fine-tuning. The model 
 Teaching a robot a task today takes two things most workplaces do not have.
 
 - **Robot-learning skill.** Someone has to set up cameras, record demonstrations, label them, train a policy and debug it.
-- **Teleoperation.** The demonstrations are recorded by driving the arm by hand, many times over. It is slow and physically tiring. The week before this hackathon I spent hours doing exactly that for one task on this same arm.
+- **Teleoperation.** The demonstrations are recorded by driving the arm by hand, many times over. It is slow and physically tiring. The week before building this I spent hours doing exactly that for one task on this same arm.
 
 Meanwhile the knowledge of what the robot should do sits with someone else: the person who does the job. In a dental practice it is the assistant who knows which instrument comes next and where it goes. That person is the expert, and they are not a robotics engineer.
 
@@ -23,9 +23,30 @@ What that gives:
 - **Corrections are part of teaching.** "Yellow before blue" or "grip harder" changes the task on the spot, and the change is remembered.
 - **Every lesson is also data.** Each taught task leaves a video, a transcript, an ordered list of steps, the corrections given, and a camera check of every move the robot made. That is labelled, supervised data, collected as a side effect of normal use. It could be used to train a policy for the same task later, much faster than recording teleoperation by hand. That last step is not built here.
 
+## Why talking
+
+A demonstration video shows what moved and where. It does not show why. Three things are only in the words:
+
+- **Which thing matters.** "The pink ones" tells the robot that colour is the point, not size or position.
+- **The rule behind the moves.** Three blocks into a bowl is three examples. "Pink goes in the bowl, the rest in the tray" is a rule that covers a block the robot has never seen.
+- **What to watch for.** Order, care, exceptions: "this one last", "gently with that".
+
+Talking also keeps working after the demonstration. The same voice channel carries corrections while the robot works, so teaching does not end when the recording does. And the same sentence means different things at different times: "the pink ones go in the bowl" is narration while the robot watches and a correction while it works. The voice model is told what the robot is doing right now and chooses by intent, not by key phrases.
+
+## Ways to talk to it
+
+Earshot needs 16 kHz speech from somewhere. It does not care where.
+
+- **Any microphone the computer has.** This is the default: built-in, USB, Bluetooth headset, a wireless lapel mic. Pick one with `--mic`.
+- **A wearable.** A mic on the wrist or collar stays close to the mouth while both hands work, and it is where the teaching happens. A Vexo Open wristband is supported as one example (`--band N`). Another device needs one small class with the same shape as `MicInput` in `earshot/voice/audio.py`.
+- **Typed words.** `--say "your turn"` skips speech to text. Useful for testing.
+- **The clip's own sound.** `scripts/vision_demo.py watch clip.mp4` lets the model listen to a recorded video directly.
+
+Speech to text is Deepgram, through Pipecat, whichever microphone is used.
+
 ## How it works
 
-1. **Watch.** Say "watch me". The app records the table at 5 frames a second and collects the words the band hears. Say you are done to stop.
+1. **Watch.** Say "watch me". The app records the table at 5 frames a second and collects the words the microphone hears. Say you are done to stop.
 2. **Understand.** The clip and the words go to Gemini. It returns a task: ordered steps, each with an item, a destination, what was Seen and what was Heard. It also returns sorting rules, including rules that were never said aloud. Where picture and words disagree the step is flagged, and the picture wins.
 3. **Do or help.** "Your turn" makes the arm run every step and then apply the rules to any loose items left on the table. "Help me" makes the arm set the next item on a handover spot and wait until you take it.
 4. **Check.** After each move a fresh photo is checked. If the item is not at its destination, or the gripper closed on nothing, the arm looks again and retries once.
@@ -35,7 +56,7 @@ What that gives:
 
 ```mermaid
 flowchart TD
-    band["Vexo Open band, USB or Bluetooth"] --> stt["Deepgram speech to text"]
+    band["Any microphone, or a wearable"] --> stt["Deepgram speech to text"]
     stt --> vad["Silero VAD, end of turn"]
     vad --> pick["gemini-3.5-flash-lite picks one action"]
     stt -->|"transcript lines"| api
@@ -66,7 +87,7 @@ The voice loop is a separate process in its own virtualenv. It never moves the a
 | `earshot/camera.py` | Latest frame from the webcam, selected by name through ffmpeg |
 | `earshot/vision/` | Gemini REST client, clip watcher, pointing, item listing, placement check, contact outline |
 | `earshot/arm/` | LeRobot connection, kinematics, pixel to table mapping, camera drift correction, pick and place |
-| `earshot/voice/` | Band audio into Pipecat, the pipeline, the action tools |
+| `earshot/voice/` | Microphone audio into Pipecat, the pipeline, the action tools, the optional wristband source |
 | `earshot/ui/` | FastAPI server, state API, websocket, the live screen |
 | `earshot/state.py` | Thread-safe app state with change notifications |
 | `earshot/store.py` | Saved tasks, found by name or by time |
@@ -87,13 +108,29 @@ Speech to text is Deepgram `nova-3-general`.
 ## Hardware
 
 * SO-101 follower arm, driven with LeRobot 0.6.2. Inverse kinematics by placo on the SO-101 URDF.
-* One Logitech C920 webcam on a tripod, looking down at the table at an angle.
-* One Vexo Open wristband, over USB or Bluetooth.
+* One webcam on a tripod, looking down at the table at an angle. We used a Logitech C920.
+* Any microphone. We used a Vexo Open wristband, over USB.
 * Small tape marks on the table for calibration.
 
 ## Run it
 
-The main app runs in a Python environment that already has LeRobot 0.6.2, OpenCV, FastAPI and requests. There is no requirements file for it. The camera name, arm port and URDF path in `earshot/config.py` are specific to this machine.
+It has been run on one setup: macOS, an SO-101 follower arm and a Logitech C920. The camera is opened through ffmpeg's avfoundation input, so another operating system needs a change in `earshot/camera.py`.
+
+The main app needs ffmpeg and a Python environment with LeRobot 0.6.2 set up for the SO-101:
+
+```
+pip install -r requirements.txt
+git clone https://github.com/TheRobotStudio/SO-ARM100.git   # the arm's URDF
+```
+
+Tell it about your bench, either in `earshot/config.py` or in the environment:
+
+```
+export EARSHOT_CAMERA="HD Pro Webcam C920"           # the camera's name as the system shows it
+export EARSHOT_ARM_PORT=/dev/tty.usbmodemXXXX        # the arm's serial port
+export EARSHOT_ARM_ID=follower                       # the name used for LeRobot's calibration
+export EARSHOT_URDF=/path/to/SO-ARM100/Simulation/SO101/so101_new_calib.urdf
+```
 
 Keys:
 
@@ -123,20 +160,30 @@ python -m earshot.app --no-arm     # camera and screen only, picks are announced
 python -m earshot.app --speed 0.4  # slower arm, default 0.6
 ```
 
-Voice loop, in its own Python 3.12 virtualenv, with the band kit cloned beside the code:
+Voice loop, in its own Python 3.12 virtualenv so it cannot disturb the robot's packages:
 
 ```
 python3.12 -m venv .venv-voice
 .venv-voice/bin/pip install -r requirements-voice.txt
-git clone https://github.com/VexoAI-Org/vexo-open-kit.git vexo-open-kit
 
-.venv-voice/bin/python scripts/voice_run.py --band N                                    # your band over Bluetooth
-.venv-voice/bin/python scripts/voice_run.py --band N --usb --port /dev/cu.usbmodem1101  # over the USB cable
-.venv-voice/bin/python scripts/voice_run.py --sim                                       # the kit's pretend band
-.venv-voice/bin/python scripts/voice_run.py --say "watch me" --say "your turn"          # typed words, no band
+.venv-voice/bin/python scripts/voice_run.py                            # the default microphone
+.venv-voice/bin/python scripts/voice_run.py --list-mics                # see the choices
+.venv-voice/bin/python scripts/voice_run.py --mic "AirPods"            # one microphone, by name or number
+.venv-voice/bin/python scripts/voice_run.py --say "watch me" --say "your turn"   # typed words, no microphone
 ```
 
-`--port` is needed with `--usb` because the arm is a USB serial port too. `--no-tts` keeps the loop silent.
+`--no-tts` keeps the loop silent. A microphone hears everyone near it and the sound goes to Deepgram, so tell the people around you.
+
+Optional, a Vexo Open wristband as the microphone:
+
+```
+git clone https://github.com/VexoAI-Org/vexo-open-kit.git vexo-open-kit
+.venv-voice/bin/python scripts/voice_run.py --band N                                    # over Bluetooth
+.venv-voice/bin/python scripts/voice_run.py --band N --usb --port /dev/cu.usbmodem1101  # over the USB cable
+.venv-voice/bin/python scripts/voice_run.py --sim                                       # the kit's pretend band
+```
+
+`--port` is needed with `--usb` because the arm is a USB serial port too.
 
 Other scripts:
 
@@ -165,9 +212,23 @@ python scripts/vision_demo.py watch clip.mp4 --silent --transcript words.txt
 
 In the recorded run the arm picked and placed 3 of 3 blocks from one spoken demonstration. Grasping was the hardest part of the day: most attempts failed until the grasp was planned from where each block meets the table.
 
-## Sponsor tracks
+## Related work
 
-* Deepgram, "Best Voice Use Case on Pipecat": the voice loop is a Pipecat pipeline (pipecat-ai 1.16) with Deepgram speech to text on the band's audio.
-* Google DeepMind, "Best Use of Gemini 4": `gemini-4-argon` watches the demonstration and writes the steps and rules.
+The idea of a model reading a human demonstration and writing a robot plan is not new. Earshot is a small working system in that line, and what it adds is speech as a teaching signal and a live correction channel.
 
-Repository: https://github.com/MNS1007/earshot
+* [Code as Policies](https://arxiv.org/abs/2209.07753) (Liang et al., 2022): a language model writes the plan and classical code moves the robot. Earshot has the same split.
+* [GPT-4V(ision) for Robotics](https://arxiv.org/abs/2311.12015) (Microsoft, 2023) and [VLM See, Robot Do](https://arxiv.org/abs/2410.08792) (2024): a vision-language model turns a human demonstration video into a task plan.
+* [Chain-of-Modality](https://arxiv.org/abs/2504.13351) (2025): a model reads one human video together with other signals such as sound or force.
+* Imitation learning from teleoperation, for example [ACT](https://tonyzhaozh.github.io/aloha) (Zhao et al., 2023), learns physical skills this system cannot, at the price of dozens of teleoperated demonstrations per task.
+
+## Where this came from
+
+Earshot was built in one day at VexoHacks (San Francisco, November 2026), where it took first place in the Google DeepMind track. The voice loop was built on the Vexo Open wristband there. It now takes any microphone.
+
+## Contributing
+
+Issues and pull requests are welcome. The most useful additions are a camera backend for Linux, support for another arm, a grasp that works for items without a clear colour, and logged trial sets on tasks beyond sorting blocks.
+
+## Licence
+
+MIT. See `LICENSE`.
