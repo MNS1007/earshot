@@ -256,7 +256,7 @@ async def nothing(params: FunctionCallParams):
 TOOLS = [start_teaching, stop_teaching, help_me, your_turn, pause, resume, load_task, swap_steps, move_step,
          change_destination, set_grip, set_speed, retry_last, skip_step, nothing]
 
-SYSTEM_INSTRUCTION = """You are the ears of a robot arm on a table. A wristband microphone hears the whole room: \
+SYSTEM_INSTRUCTION = """You are the ears of a robot arm on a table. A microphone hears the whole room: \
 the person teaching the arm, other people, and background talk. You get one piece of speech at a time, as text \
 from a speech recogniser, so words may be slightly wrong.
 

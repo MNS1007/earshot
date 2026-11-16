@@ -284,7 +284,7 @@ button.failed { outline: 2px solid var(--fault); outline-offset: 2px; }
 .events li.error .txt, .events li.miss .txt { color: var(--fault); }
 .events li.look .txt { color: var(--amber); }
 
-/* the only ambient motion: the mode dot breathes while the arm works or the band listens */
+/* the only ambient motion: the mode dot breathes while the arm works or the microphone listens */
 @media (prefers-reduced-motion: no-preference) {
   body[data-mode="teaching"] .dot,
   body[data-mode="helping"] .dot,

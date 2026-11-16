@@ -1,6 +1,8 @@
 """Central settings: model names, paths, ports, and table geometry.
 
-Everything that might change at the venue lives here so no other file hard-codes it.
+Everything that differs from one bench to the next lives here so no other file hard-codes it.
+The camera, arm port, arm name and URDF path can be set with EARSHOT_CAMERA, EARSHOT_ARM_PORT,
+EARSHOT_ARM_ID and EARSHOT_URDF instead of editing this file.
 """
 from __future__ import annotations
 
@@ -19,13 +21,14 @@ POINT_MODEL_ALT = "gemini-4-argon"    # about 5 s, also points at the base
 GEMINI_BASE = "https://generativelanguage.googleapis.com"
 
 # Camera
-CAMERA_NAME = "HD Pro Webcam C920"
+CAMERA_NAME = os.environ.get("EARSHOT_CAMERA", "HD Pro Webcam C920")    # as the system names it
 CAMERA_SIZE = (1280, 720)
 
 # Arm
-ARM_PORT = "/dev/tty.usbmodem5B790502351"
-ARM_ID = "follower"
-URDF_PATH = str(Path.home() / "developer/SO-ARM100/Simulation/SO101/so101_new_calib.urdf")
+ARM_PORT = os.environ.get("EARSHOT_ARM_PORT", "/dev/tty.usbmodem5B790502351")
+ARM_ID = os.environ.get("EARSHOT_ARM_ID", "follower")
+# The SO-101 model from github.com/TheRobotStudio/SO-ARM100
+URDF_PATH = os.environ.get("EARSHOT_URDF", str(Path.home() / "developer/SO-ARM100/Simulation/SO101/so101_new_calib.urdf"))
 EE_FRAME = "gripper_frame_link"
 ARM_CALIBRATION = Path.home() / ".cache/huggingface/lerobot/calibration/robots/so_follower" / f"{ARM_ID}.json"
 # Extra degrees between this arm's motor zero and the URDF's, beyond what the calibration file

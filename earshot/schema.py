@@ -54,7 +54,7 @@ class Task:
     corrections: list[Correction] = field(default_factory=list)
     settings: dict = field(default_factory=dict)   # e.g. {"grip": 0.6, "speed": 0.5}
     clip: str = ""                                 # path of the demonstration clip
-    transcript: str = ""                           # what the band heard during the demonstration
+    transcript: str = ""                           # what the microphone heard during the demonstration
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2)

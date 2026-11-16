@@ -392,7 +392,7 @@ class Earshot:
         elif act == "stop_teaching":
             self.stop_teaching()
         elif act in ("tap", "double_tap"):
-            pass      # handling objects sets off the band's tap sensor, so taps do not start or stop anything
+            pass      # handling objects sets off a wristband's tap sensor, so taps do not start or stop anything
         elif act == "help_me":
             self._start_job(self.help, "helping")
         elif act == "your_turn":

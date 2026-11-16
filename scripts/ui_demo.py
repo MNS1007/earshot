@@ -49,7 +49,7 @@ def wait(seconds: float) -> None:
 
 
 def say(text: str, pace: float = 0.16) -> None:
-    """Show a line arriving word by word, as the band transcribes it."""
+    """Show a line arriving word by word, as it is transcribed."""
     words = text.split()
     for i in range(1, len(words) + 1):
         state.set_transcript(" ".join(words[:i]), final=False)

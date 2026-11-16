@@ -1,8 +1,8 @@
-# Watch one demonstration clip (plus what the wristband heard) and turn it into a Task.
+# Watch one demonstration clip (plus what the microphone heard) and turn it into a Task.
 """Watching: a video model reads the demonstration and lists the moves in order.
 
 In the real system the clip has no usable sound and the words arrive separately as plain
-text from the wristband, without timestamps. A clip with its own sound track also works
+text from the microphone, without timestamps. A clip with its own sound track also works
 when no transcript is given.
 """
 from __future__ import annotations
@@ -75,8 +75,8 @@ The video is the truth. When the words and the video disagree, item and destinat
 WITH_SOUND = "The video has sound. Listen to what the person says while they work and use it as their words."
 WITH_TRANSCRIPT = (
     "The video has no usable sound; ignore any audio. The person's words were recorded separately by a "
-    "wristband microphone and are given below as plain text without timestamps. They were spoken in order "
-    "while working, so match them to the moves by order and by content.\n\nWords from the wristband:\n\"\"\"\n{transcript}\n\"\"\""
+    "microphone and are given below as plain text without timestamps. They were spoken in order "
+    "while working, so match them to the moves by order and by content.\n\nWords from the microphone:\n\"\"\"\n{transcript}\n\"\"\""
 )
 
 NO_WORDS = "The video has no usable sound and the person said nothing; ignore any audio and leave every heard empty."
@@ -125,7 +125,7 @@ def _refine_places(steps: list[Step], frame: np.ndarray) -> None:
 def watch_clip(clip_path: str | Path, transcript: str | None, name: str) -> Task:
     """Turn one demonstration into a Task.
 
-    `clip_path` is the video of the table. `transcript` is what the wristband heard, as
+    `clip_path` is the video of the table. `transcript` is what the microphone heard, as
     plain text; pass None to have the model listen to the clip's own sound track instead
     (an empty string means nothing was said, and the clip's sound is ignored).
     `name` is what the person calls the task. Where words and video disagree, the steps

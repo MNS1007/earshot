@@ -1,34 +1,26 @@
-"""The wristband as the pipeline's microphone, and the record of what it heard.
+"""A Vexo Open wristband as the pipeline's microphone. Optional: any microphone works (audio.py).
 
-BandInput connects to one Vexo Open band (the team's number, or the kit's pretend band),
-decodes its Opus packets to 16 kHz PCM and queues them into the Pipecat worker. Taps are
-forwarded to the main app as {"action": "tap" | "double_tap"}. When the link drops the
-library reconnects by itself; when it gives up, this keeps trying the SAME band.
-
-TranscriptLog is the pipeline stage right after speech-to-text: every final transcript line
-is printed, appended to data/transcripts/YYYYMMDD.jsonl with a wall-clock time, and POSTed
-to the main app as {"action": "transcript", "args": {"text", "t"}} so the teaching step can
-use the words spoken during a demonstration.
+BandInput connects to one band (by its number, or the kit's pretend band), decodes its Opus
+packets to 16 kHz PCM and queues them into the Pipecat worker. Taps are forwarded to the main
+app as {"action": "tap" | "double_tap"}. When the link drops the library reconnects by itself;
+when it gives up, this keeps trying the SAME band. The band's library is used from a clone of
+its kit beside the code; nothing here is needed when another microphone is used.
 """
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 import time
-from pathlib import Path
 from typing import Optional
 
-from pipecat.frames.frames import Frame, InputAudioRawFrame, TranscriptionFrame
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.frames.frames import InputAudioRawFrame
 
 from earshot import config
 from earshot.voice.actions import DISPATCH
+from earshot.voice.audio import SAMPLE_RATE, EchoGate
 
 KIT = config.ROOT / "vexo-open-kit"
 SAMPLE_SPEECH = KIT / "dashboard" / "speech" / "sample-speech.opus"
-TRANSCRIPTS_DIR = config.DATA / "transcripts"
-SAMPLE_RATE = 16000
 RETRY_S = 5.0
 
 
@@ -42,21 +34,6 @@ def _kit():
         sys.path.insert(0, path)
     import vexo_open
     return vexo_open
-
-
-class EchoGate:
-    """Lets the speaker tell the band input "I am talking": the band's microphone hears the
-    laptop speaker, so its sound is replaced by silence until the speech has ended."""
-
-    def __init__(self) -> None:
-        self._until = 0.0
-
-    def hold(self, seconds: float) -> None:
-        self._until = max(self._until, time.monotonic()) + seconds
-
-    @property
-    def active(self) -> bool:
-        return time.monotonic() < self._until
 
 
 class BandInput:
@@ -187,35 +164,3 @@ class BandInput:
             except Exception:
                 pass
             self._closing = False
-
-
-class TranscriptLog(FrameProcessor):
-    """Prints, saves and forwards every final transcript line; passes every frame on unchanged."""
-
-    def __init__(self, post: bool = True, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.post = post
-        self.lines = 0
-        self._tasks: set = set()
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, TranscriptionFrame) and frame.text.strip():
-            self._record(frame.text.strip())
-        await self.push_frame(frame, direction)
-
-    def _record(self, text: str) -> None:
-        t = time.time()
-        self.lines += 1
-        print('heard: "%s"' % text, flush=True)
-        try:
-            TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
-            with open(TRANSCRIPTS_DIR / (time.strftime("%Y%m%d", time.localtime(t)) + ".jsonl"), "a") as f:
-                f.write(json.dumps({"t": t, "clock": time.strftime("%H:%M:%S", time.localtime(t)), "text": text})
-                        + "\n")
-        except OSError as e:
-            print("[voice] Could not save the transcript line (%s)." % e, flush=True)
-        if self.post:                                           # not awaited: a slow app must not delay the turn
-            task = asyncio.ensure_future(DISPATCH.post("transcript", {"text": text, "t": t}, text))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)

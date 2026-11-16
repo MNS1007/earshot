@@ -246,7 +246,7 @@ class AppState:
     # ------------------------------------------------------------------ transcript, robot status
 
     def set_transcript(self, text: str, final: bool = False) -> None:
-        """The line the band is hearing right now. final=False while the words are still arriving."""
+        """The line the microphone is hearing right now. final=False while the words are still arriving."""
         with self._lock:
             self._transcript = str(text)
             self._transcript_final = bool(final)

@@ -1,6 +1,6 @@
 """The Pipecat pipeline of the voice loop.
 
-    band PCM -> [count] -> Deepgram STT -> transcript log -> user turn (Silero VAD)
+    microphone PCM -> [count] -> Deepgram STT -> transcript log -> user turn (Silero VAD)
              -> turn gate -> LLM with the action tools -> [TTS -> speaker] -> assistant context
 
 The LLM is forced to answer with a tool call and the tool result never starts a second
@@ -28,13 +28,13 @@ from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from earshot import config
 from earshot.voice import actions
-from earshot.voice.band_input import SAMPLE_RATE, EchoGate, TranscriptLog
+from earshot.voice.audio import SAMPLE_RATE, EchoGate, TranscriptLog
 
 GOOGLE_MODEL = os.environ.get("EARSHOT_VOICE_MODEL", "gemini-3.5-flash-lite")
 OPENAI_MODEL = os.environ.get("EARSHOT_VOICE_OPENAI_MODEL", "")       # empty: Pipecat's default model
 ELEVENLABS_VOICE = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
-KEEP_TURNS = 3            # user turns kept as context; the band hears the room all day
-ECHO_TAIL_S = 0.3         # the band stays deaf this long after the speaker went quiet
+KEEP_TURNS = 3            # user turns kept as context; the microphone hears the room all day
+ECHO_TAIL_S = 0.3         # the microphone stays deaf this long after the speaker went quiet
 
 
 def get_key(name: str) -> Optional[str]:
@@ -46,7 +46,7 @@ def get_key(name: str) -> Optional[str]:
 
 
 class FrameCounter(FrameProcessor):
-    """First stage: counts the band's PCM frames, so a run can show that sound arrived."""
+    """First stage: counts the microphone's PCM frames, so a run can show that sound arrived."""
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -118,7 +118,7 @@ class TurnGate(FrameProcessor):
 class SpeakerOutput(FrameProcessor):
     """Plays TTS audio on the laptop's default output with sounddevice (bundled PortAudio, so no
     PyAudio and nothing to brew). Output only: it never opens a microphone. The device is opened
-    at the first audio frame. While it plays, the echo gate keeps the band's sound out."""
+    at the first audio frame. While it plays, the echo gate keeps the microphone's sound out."""
 
     def __init__(self, echo_gate: Optional[EchoGate] = None, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -239,7 +239,7 @@ def build(*, listen: bool, llm_kind: str = "google", tts: bool = True, post_tran
             stages.append(transcripts)
             has_stt = True
         else:
-            notes.append("DEEPGRAM_API_KEY is not set, so the band's sound is received but not turned into text; "
+            notes.append("DEEPGRAM_API_KEY is not set, so sound is received but not turned into text; "
                          "put it in .env, or test the actions with --say \"words\".")
 
     llm = _llm(llm_kind, notes)

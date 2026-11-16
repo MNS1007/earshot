@@ -1,0 +1,10 @@
+# The main app (camera, screen, arm). Tested on Python with LeRobot 0.6.2 already installed
+# for the SO-101 (see the LeRobot install guide for the Feetech motor extra).
+lerobot==0.6.2
+placo>=0.9
+opencv-python
+numpy
+fastapi
+uvicorn
+websockets
+requests

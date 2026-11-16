@@ -1,7 +1,8 @@
 # The voice loop's own environment (.venv-voice, Python 3.12). Never install these into the robot environment.
-#   /Users/mns/anaconda3/envs/lerobot/bin/python -m venv .venv-voice
+#   python3.12 -m venv .venv-voice
 #   .venv-voice/bin/pip install -r requirements-voice.txt
-# The band library is not here: it is used from the cloned vexo-open-kit/ folder.
+# sounddevice reads any microphone. bleak, av and pyserial are only for the optional Vexo Open
+# wristband, whose library is used from a cloned vexo-open-kit/ folder.
 pipecat-ai[deepgram,openai,google,elevenlabs,silero]==1.16.0
 bleak==3.1.0
 av==19.0.2
